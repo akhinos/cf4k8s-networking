@@ -283,6 +283,108 @@ is prevented.
 
 todo: how traffic is forwarded from sidecar to app container
 
+See https://istio.io/docs/ops/deployment/requirements/#ports-used-by-istio for list of special envoy ports.
+Use https://archive.istio.io/v1.4/docs/ops/diagnostic-tools/proxy-cmd/ for acutal debugging advice.
+
+```bash
+$ istioctl proxy-config listener  test-app-a-test-eb94aee321-0.cf-workloads
+ADDRESS          PORT      TYPE
+10.96.4.62       8080      HTTP # 10.96.4.62 is the pod's cluster IP, this is because the app listens on this port
+10.96.4.62       15020     TCP  # Istio agent status port (for Prometheus telemetry)
+10.68.227.69     8080      TCP  #clusterIP of metric-proxy.cf-system service
+10.66.218.25     8085      TCP  #clusterIP of eirini.cf-system service
+0.0.0.0          8080      TCP
+0.0.0.0          80        TCP
+10.68.94.164     24224     TCP #clusterIP of fluentd-forwarder-ingress.cf-system service 
+10.66.80.251     8082      TCP #clusterIP of log-cache-syslog.cf-system service 
+0.0.0.0          8083      TCP            #  Check below for detailed config
+0.0.0.0          15001     TCP # outbound envoy port
+0.0.0.0          15006     TCP # inbound envoy port
+0.0.0.0          15090     HTTP  # Envoy Prometheus telemetry
+```
+
+```bash
+$ istioctl proxy-config listener  test-app-a-test-eb94aee321-0.cf-workloads --port 8083 -o json
+...
+"filters": [
+      {
+          "name": "envoy.http_connection_manager",
+          "typedConfig": {
+              "rds": {
+                  "configSource": {
+                      "ads": {}
+                  },
+                  "routeConfigName": "8083"
+              },
+...
+```
+```bash
+$ istioctl proxy-config routes  test-app-a-test-eb94aee321-0.cf-workloads --name 8083 -o json
+[
+    {
+        "name": "8083",
+        "virtualHosts": [
+            {
+                "name": "log-cache.cf-system.svc.cluster.local:8083",
+                "domains": [
+                    "log-cache.cf-system.svc.cluster.local",
+                    "log-cache.cf-system.svc.cluster.local:8083",
+                    "log-cache.cf-system",
+                    "log-cache.cf-system:8083",
+                    "log-cache.cf-system.svc.cluster",
+                    "log-cache.cf-system.svc.cluster:8083",
+                    "log-cache.cf-system.svc",
+                    "log-cache.cf-system.svc:8083",
+                    "10.69.103.199",
+                    "10.69.103.199:8083"
+                ],
+                "routes": [
+                    {
+                        "name": "default",
+                        "match": {
+                            "prefix": "/"
+                        },
+                        "route": {
+                            "cluster": "outbound|8083||log-cache.cf-system.svc.cluster.local",
+```
+
+```bash
+$ istioctl proxy-config cluster   test-app-a-test-eb94aee321-0.cf-workloads --fqdn log-cache.cf-system.svc.cluster.local -o json
+...
+edsClusterConfig": {
+            "edsConfig": {
+                "ads": {}
+            },
+            "serviceName": "outbound|8083||log-cache.cf-system.svc.cluster.local"
+        },
+```
+
+Retrieve endpoints from Pilot (via ADS). These endpoints consist of a port and the targeted pod IP (in this case cf-system/log-cache-7bd48bbfc7-8ljxv).
+
+```bash
+$ istioctl proxy-config endpoints   test-app-a-test-eb94aee321-0.cf-workloads --cluster "outbound|8083||log-cache.cf-system.svc.cluster.local"
+ENDPOINT             STATUS      OUTLIER CHECK     CLUSTER
+10.96.0.159:8083     HEALTHY     OK                outbound|8083||log-cache.cf-system.svc.cluster.local
+```
+
+
+
+```yaml
+kind: VirtualService
+..
+spec:
+  gateways:
+  - cf-system/istio-ingressgateway
+  hosts:
+  - log-cache.cf.c21s-1.c21s-dev.shoot.canary.k8s-hana.ondemand.com
+  http:
+  - route:
+    - destination:
+        host: log-cache.cf-system.svc.cluster.local
+        port:
+          number: 8083
+```
+
 
 ### Push Another App
 ### Map Additional Route
