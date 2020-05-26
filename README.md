@@ -281,6 +281,28 @@ is prevented.
 -A ISTIO_REDIRECT -p tcp -j REDIRECT --to-ports 15001             # Envoy receives outgoing traffic on port 15001
 ```
 
+1. When a new kubernetes service is added (i.e. cluster ip for CF app), no changes are made to envoy config by default.
+
+
+```bash
+istioctl proxy-config listener test-go-app-test-5bc345f68e-0.cf-workloads
+ADDRESS            PORT      TYPE
+100.96.3.28        8080      HTTP      # App port on pod ip
+100.96.3.28        15020     TCP       # Prometheus telemetry for istio agent
+100.70.133.122     8085      TCP       # Eirini service cluster ip
+100.64.13.235      8080      TCP
+0.0.0.0            80        TCP
+100.68.244.32      24224     TCP
+0.0.0.0            8083      TCP
+100.70.137.166     8082      TCP
+0.0.0.0            8080      TCP       # App port
+0.0.0.0            15001     TCP       # Outbound capture port of Envoy
+0.0.0.0            15006     TCP       # Inbound capture port of Envoy
+0.0.0.0            15090     HTTP
+```
+
+
+
 todo: how traffic is forwarded from sidecar to app container
 
 See https://istio.io/docs/ops/deployment/requirements/#ports-used-by-istio for list of special envoy ports.
@@ -387,6 +409,10 @@ spec:
 
 
 ### Push Another App
+
+No changes to envoy config of existing app(s). No direct app-to-app communication is possible as of now.
+
+
 ### Map Additional Route
 
 
