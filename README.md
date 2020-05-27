@@ -47,6 +47,11 @@ The envoyproxy documentation contains a subpage where the basic terminology (lis
 | Listener | A frontend exposed by Envoy that allows downstream hosts to connect. Think 0.0.0.0:443|
 | Filter | Pluggable logic that allows traffic manipulation and routing decisions to upstream clusters|
 
+### Log levels
+
+It is possible to increase/set envoy's log level via
+`curl -X POST -s http://localhost:15000/logging?level=debug`. It is also possible to increase the log level for individual loggers. Possible log levels are critical, error, warning, info, debug, trace.
+
 ### Configuration
 Envoy Ingress [config](examples/initial/ingress.json) contains:
 - clusters
@@ -179,7 +184,7 @@ Ingress Envoy:
               },
 ```
 1. A listener is added for the mapped app host name for both http and https variants.
-   The listener translates the virtual service configuration into envoy configuration. 
+   The listener translates the virtual service configuration into envoy configuration. #TODO: check what listener looks like
    A route entry is added so that the ingress envoy knows how a host name is mapped to a service name.
    Request headers are added that will be forwarded to the cf app.
 ```json
@@ -287,21 +292,124 @@ is prevented.
 See https://istio.io/docs/ops/deployment/requirements/#ports-used-by-istio for list of special envoy ports.
 Use https://archive.istio.io/v1.4/docs/ops/diagnostic-tools/proxy-cmd/ for acutal debugging advice.
 
+A virtual listener on 0.0.0.0 per each HTTP port for outbound HTTP traffic (e.g. configured via VirtualService).
+
 ```bash
 $ istioctl proxy-config listener  test-app-a-test-eb94aee321-0.cf-workloads
 ADDRESS          PORT      TYPE
-10.96.4.62       8080      HTTP       # 10.96.4.62 is the pod's clusterIP, this is because the app listens on this port
-10.96.4.62       15020     TCP        # Istio agent status port (for Prometheus telemetry)
-10.68.227.69     8080      TCP        # clusterIP of metric-proxy.cf-system service
-10.66.218.25     8085      TCP        # clusterIP of eirini.cf-system service
-0.0.0.0          8080      TCP        # App port. Log access to app to stdout
-0.0.0.0          80        TCP        # App port. Log access to app to stdout
-10.68.94.164     24224     TCP        # clusterIP of fluentd-forwarder-ingress.cf-system service 
-10.66.80.251     8082      TCP        # clusterIP of log-cache-syslog.cf-system service 
-0.0.0.0          8083      TCP        # Check below for detailed config
-0.0.0.0          15001     TCP        # outbound capture port of envoy
-0.0.0.0          15006     TCP        # inbound capture port of envoy
-0.0.0.0          15090     HTTP       # Envoy Prometheus telemetry
+0.0.0.0          15001     TCP    # outbound envoy port
+0.0.0.0          15006     TCP    # inbound envoy port
+10.96.4.62       8080      HTTP   # 10.96.4.62 is the pod's cluster IP, this is because the app listens on this port
+10.96.4.62       15020     TCP    # Istio agent status port (for Prometheus telemetry)
+10.68.227.69     8080      TCP    # clusterIP of metric-proxy.cf-system service
+10.66.218.25     8085      TCP    # clusterIP of eirini.cf-system service
+10.68.94.164     24224     TCP    # clusterIP of fluentd-forwarder-ingress.cf-system service
+10.66.80.251     8082      TCP    # clusterIP of log-cache-syslog.cf-system service
+0.0.0.0          8080      TCP    # Outbound traffic to uaa.cf-system
+0.0.0.0          80        TCP    # Outbound traffic to capi.cf-system and cfroutesync.cf-system
+0.0.0.0          8083      TCP    # Outbound traffic to log-cache.cf-system service. Check below for detailed config
+0.0.0.0          15090     HTTP   # Envoy Prometheus telemetry
+```
+
+#### How traffic is forwarded from sidecar to app container
+
+The `istio-init` initContainer configures IP tables in such a way that all incoming traffic is routed to port 15006. Then, there is a listener on port 1500 which has `useOriginalDst` set to true which means it hands the request over to the listener that best matches the original destination of the request.
+`istioctl proxy-config listener  test-app-a-test-eb94aee321-0.cf-workloads --port 15001 -o json`
+```yaml
+[
+    {
+        "name": "virtualOutbound",
+        "address": {
+            "socketAddress": {
+                "address": "0.0.0.0",
+                "portValue": 15001
+            }
+        },
+        "useOriginalDst": true
+    }
+]
+```
+Since incoming traffic has our podIP as dstIP and dstPort 8080 this is the following cluster:
+
+`$ istioctl proxy-config listener  test-app-a-test-eb94aee321-0.cf-workloads --port 8080 --address 10.96.4.62  -o json`
+```yaml
+[
+    {
+        "name": "10.96.4.62_8080",
+        "address": {
+            "socketAddress": {
+                "address": "10.96.4.62",
+                "portValue": 8080
+            }
+        },
+        "filterChains": [
+            {
+                "tlsContext": {
+                    #... configures mTLS
+                },
+                "filters": [
+                    {
+                        "name": "envoy.http_connection_manager",
+                        "typedConfig": {
+                            "routeConfig": {
+                                "name": "inbound|8080|http|s-ef9c974d-adfd-4552-8fcd-19e17f84d8dc.cf-workloads.svc.cluster.local",
+                                "virtualHosts": [
+                                    {
+                                        "name": "inbound|http|8080",
+                                        "domains": [
+                                            "*"
+                                        ],
+                                        "routes": [
+                                            {
+                                                "name": "default",
+                                                "match": {
+                                                    "prefix": "/"
+                                                },
+                                                "route": {
+                                                    "cluster": "inbound|8080|http|s-ef9c974d-adfd-4552-8fcd-19e17f84d8dc.cf-workloads.svc.cluster.local",
+                                                },
+```
+
+The virtualHost `inbound|http|8080` has a matching domain `*` and therefore the packet is using route `default` to cluster `inbound|8080|http|s-ef9c974d-adfd-4552-8fcd-19e17f84d8dc.cf-workloads.svc.cluster.local`.
+
+`$ istioctl proxy-config cluster  test-app-a-test-eb94aee321-0.cf-workloads --fqdn "inbound|8080|http|s-ef9c974d-adfd-4552-8fcd-19e17f84d8dc.cf-workloads.svc.cluster.local"  -o json`
+```yaml
+[
+    {
+        "name": "inbound|8080|http|s-ef9c974d-adfd-4552-8fcd-19e17f84d8dc.cf-workloads.svc.cluster.local",
+        "type": "STATIC",
+        "loadAssignment": {
+            "clusterName": "inbound|8080|http|s-ef9c974d-adfd-4552-8fcd-19e17f84d8dc.cf-workloads.svc.cluster.local",
+            "endpoints": [
+                {
+                    "lbEndpoints": [
+                        {
+                            "endpoint": {
+                                "address": {
+                                    "socketAddress": {
+                                        "address": "127.0.0.1",
+                                        "portValue": 8080
+```
+This cluster has one static endpoint configured and that is localhost:8080, which is where our application is listening.
+
+
+
+#### How egress is forwarded from the app container
+
+`istioctl proxy-config listener  test-app-a-test-eb94aee321-0.cf-workloads --port 15001 -o json`
+```yaml
+[
+    {
+        "name": "virtualOutbound",
+        "address": {
+            "socketAddress": {
+                "address": "0.0.0.0",
+                "portValue": 15001
+            }
+        },
+        "useOriginalDst": true
+    }
+]
 ```
 
 ```bash
@@ -360,7 +468,9 @@ edsClusterConfig": {
         },
 ```
 
-Retrieve endpoints from Pilot (via ADS). These endpoints consist of a port and the targeted pod IP (in this case cf-system/log-cache-7bd48bbfc7-8ljxv).
+Retrieve endpoints from Pilot (via ADS). These endpoints consist of a port and the targeted pod IP (in this case cf-system/log-cache-7bd48bbfc7-8ljxv). 
+
+*Note* The list of endpoints is not dumped at `localhost:15000/config_dump`. Use istioctl or `curl -s http://localhost:15000/clusters?format=json` to get it.
 
 ```bash
 $ istioctl proxy-config endpoints   test-app-a-test-eb94aee321-0.cf-workloads --cluster "outbound|8083||log-cache.cf-system.svc.cluster.local"
