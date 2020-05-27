@@ -313,21 +313,102 @@ ADDRESS          PORT      TYPE
 
 #### How traffic is forwarded from sidecar to app container
 
-The `istio-init` initContainer configures IP tables in such a way that all incoming traffic is routed to port 15006. Then, there is a listener on port 1500 which has `useOriginalDst` set to true which means it hands the request over to the listener that best matches the original destination of the request.
-`istioctl proxy-config listener  test-app-a-test-eb94aee321-0.cf-workloads --port 15001 -o json`
+The `istio-init` initContainer configures IP tables in such a way that all incoming traffic is routed to port 15006. Then, there is a listener on port 15006 which has a listener filter `envoy.listener.original_dst` which restores the original destination address before filter chains apply. Then there is a list of filter chains which match in order of most to least specific destination, i.e. `100.96.4.29/32` is more specific than `0.0.0.0/0` so the higher prefix length wins.
+`istioctl proxy-config listener  test-app-a-test-eb94aee321-0.cf-workloads --port 15006 -o json`
 ```yaml
-[
-    {
-        "name": "virtualOutbound",
-        "address": {
-            "socketAddress": {
+        {
+          "listener": {
+            "address": {
+              "socket_address": {
                 "address": "0.0.0.0",
-                "portValue": 15001
-            }
-        },
-        "useOriginalDst": true
-    }
-]
+                "port_value": 15006       # all inbound traffic gets forwarded here
+              }
+            },
+            "continue_on_listener_filters_timeout": true,
+            "filter_chains": [
+              {
+                "filter_chain_match": {
+                  "prefix_ranges": [
+                    {
+                      "address_prefix": "0.0.0.0",
+                      "prefix_len": 0
+                    }
+                  ]
+                },
+                "filters": [
+                  {
+                    "name": "envoy.tcp_proxy",
+                    "typed_config": {
+                      "@type": "type.googleapis.com/envoy.config.filter.network.tcp_proxy.v2.TcpProxy",
+                      "access_log": [ (...) ],
+                      "cluster": "InboundPassthroughClusterIpv4",
+                      "stat_prefix": "InboundPassthroughClusterIpv4"
+                    }
+                  }
+                ],
+                (...)
+              },
+              { # (other filter chains here)
+               (...)
+              },
+              {
+                "filter_chain_match": {
+                  "destination_port": 8080,
+                  "prefix_ranges": [
+                    {
+                      "address_prefix": "100.96.4.29",    # this matches the app's pod ip and app port 8080
+                      "prefix_len": 32
+                    }
+                  ]
+                },
+                "filters": [
+                  {
+                    "name": "envoy.http_connection_manager",
+                    "typed_config": {
+                      "@type": "type.googleapis.com/envoy.config.filter.network.http_connection_manager.v2.HttpConnectionManager",
+                      "access_log": [ (...) ],
+                      "forward_client_cert_details": "APPEND_FORWARD",
+                      "generate_request_id": true,
+                      "http_filters": [ (...) ],
+                      "normalize_path": true,
+                      "route_config": {
+                        "name": "inbound|8080|http|s-7afcae7d-d2ff-4310-9e74-2ec9ca4cca19.cf-workloads.svc.cluster.local",
+                        "validate_clusters": false,
+                        "virtual_hosts": [
+                          {
+                            "domains": [
+                              "*"
+                            ],
+                            "name": "inbound|http|8080",
+                            "routes": [
+                              {
+                                "decorator": {
+                                  "operation": "s-7afcae7d-d2ff-4310-9e74-2ec9ca4cca19.cf-workloads.svc.cluster.local:8080/*"
+                                },
+                                "match": {
+                                  "prefix": "/"
+                                },
+                                "name": "default",
+                                "route": {    # this route selects the cluster backend for inbound app traffic
+                                  "cluster": "inbound|8080|http|s-7afcae7d-d2ff-4310-9e74-2ec9ca4cca19.cf-workloads.svc.cluster.local",
+                                  "max_grpc_timeout": "0s",
+                                  "timeout": "0s"
+                                },
+                                "typed_per_filter_config": { ... }
+
+(...)
+              "listener_filters": [
+              {
+                "name": "envoy.listener.original_dst"     # this restores original destination before filter chains are run
+              },
+              {
+                "name": "envoy.listener.tls_inspector"
+              }
+            ],
+            "listener_filters_timeout": "1s",
+            "name": "virtualInbound"
+          },
+
 ```
 Since incoming traffic has our podIP as dstIP and dstPort 8080 this is the following cluster:
 
