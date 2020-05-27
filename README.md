@@ -282,28 +282,7 @@ is prevented.
 ```
 
 1. When a new kubernetes service is added (i.e. cluster ip for CF app), no changes are made to envoy config by default.
-
-
-```bash
-istioctl proxy-config listener test-go-app-test-5bc345f68e-0.cf-workloads
-ADDRESS            PORT      TYPE
-100.96.3.28        8080      HTTP      # App port on pod ip
-100.96.3.28        15020     TCP       # Prometheus telemetry for istio agent
-100.70.133.122     8085      TCP       # Eirini service cluster ip
-100.64.13.235      8080      TCP
-0.0.0.0            80        TCP
-100.68.244.32      24224     TCP
-0.0.0.0            8083      TCP
-100.70.137.166     8082      TCP
-0.0.0.0            8080      TCP       # App port
-0.0.0.0            15001     TCP       # Outbound capture port of Envoy
-0.0.0.0            15006     TCP       # Inbound capture port of Envoy
-0.0.0.0            15090     HTTP
-```
-
-
-
-todo: how traffic is forwarded from sidecar to app container
+1. The started sidecar envoy gets pre-configured listeners as described below.
 
 See https://istio.io/docs/ops/deployment/requirements/#ports-used-by-istio for list of special envoy ports.
 Use https://archive.istio.io/v1.4/docs/ops/diagnostic-tools/proxy-cmd/ for acutal debugging advice.
@@ -311,18 +290,18 @@ Use https://archive.istio.io/v1.4/docs/ops/diagnostic-tools/proxy-cmd/ for acuta
 ```bash
 $ istioctl proxy-config listener  test-app-a-test-eb94aee321-0.cf-workloads
 ADDRESS          PORT      TYPE
-10.96.4.62       8080      HTTP # 10.96.4.62 is the pod's cluster IP, this is because the app listens on this port
-10.96.4.62       15020     TCP  # Istio agent status port (for Prometheus telemetry)
-10.68.227.69     8080      TCP  #clusterIP of metric-proxy.cf-system service
-10.66.218.25     8085      TCP  #clusterIP of eirini.cf-system service
-0.0.0.0          8080      TCP
-0.0.0.0          80        TCP
-10.68.94.164     24224     TCP #clusterIP of fluentd-forwarder-ingress.cf-system service 
-10.66.80.251     8082      TCP #clusterIP of log-cache-syslog.cf-system service 
-0.0.0.0          8083      TCP            #  Check below for detailed config
-0.0.0.0          15001     TCP # outbound envoy port
-0.0.0.0          15006     TCP # inbound envoy port
-0.0.0.0          15090     HTTP  # Envoy Prometheus telemetry
+10.96.4.62       8080      HTTP       # 10.96.4.62 is the pod's clusterIP, this is because the app listens on this port
+10.96.4.62       15020     TCP        # Istio agent status port (for Prometheus telemetry)
+10.68.227.69     8080      TCP        # clusterIP of metric-proxy.cf-system service
+10.66.218.25     8085      TCP        # clusterIP of eirini.cf-system service
+0.0.0.0          8080      TCP        # App port. Log access to app to stdout
+0.0.0.0          80        TCP        # App port. Log access to app to stdout
+10.68.94.164     24224     TCP        # clusterIP of fluentd-forwarder-ingress.cf-system service 
+10.66.80.251     8082      TCP        # clusterIP of log-cache-syslog.cf-system service 
+0.0.0.0          8083      TCP        # Check below for detailed config
+0.0.0.0          15001     TCP        # outbound capture port of envoy
+0.0.0.0          15006     TCP        # inbound capture port of envoy
+0.0.0.0          15090     HTTP       # Envoy Prometheus telemetry
 ```
 
 ```bash
