@@ -440,7 +440,7 @@ This cluster has one static endpoint configured and that is localhost:8080, whic
 
 #### How egress is forwarded from the app container
 
-The `istio-init` init container configures IP tables in such a way that all outgoing traffic is routed to port 15001. There is a listener on this port that has `useOriginalDst` set to true which means it hands the request over to the listener that best matches the original destination of the request. If it can’t find any matching virtual listeners it sends the request to the PassthroughCluster which connects to the destination directly.
+The `istio-init` init container configures IP tables in such a way that all outgoing traffic is routed to port 15001. There is a listener on this port that has `useOriginalDst` set to true which means it hands the request over to the listener that best matches the original destination of the request. If it can’t find any matching virtual listeners it sends the request to the PassthroughCluster which connects to the destination directly. For any address, where there is no special Istio config, e.g. for google.com:443, the PassthroughCluster is used.
 
 `istioctl proxy-config listener  test-app-a-test-eb94aee321-0.cf-workloads --port 15001 -o json`
 ```yaml
@@ -458,10 +458,10 @@ The `istio-init` init container configures IP tables in such a way that all outg
 ]
 ```
 
-There is a virtual listener on 0.0.0.0 per each HTTP port for outbound HTTP traffic.
+There is a virtual listener on 0.0.0.0 per each HTTP port for outbound HTTP traffic. We follow the packet sent to the log-cache-service via `curl log-cache.cf-system:8083/test`.
 
 ```bash
-$ istioctl proxy-config listener  test-app-a-test-eb94aee321-0.cf-workloads --port 8083 -o json
+$ istioctl proxy-config listener test-app-a-test-eb94aee321-0.cf-workloads --port 8083 -o json
 ...
 "filters": [
       {
@@ -475,6 +475,8 @@ $ istioctl proxy-config listener  test-app-a-test-eb94aee321-0.cf-workloads --po
               },
 ...
 ```
+The filter above belongs to the matching listener. `rds` means route discovery service which looks for a route config with name `8083`. 
+
 ```bash
 $ istioctl proxy-config routes  test-app-a-test-eb94aee321-0.cf-workloads --name 8083 -o json
 [
@@ -505,28 +507,35 @@ $ istioctl proxy-config routes  test-app-a-test-eb94aee321-0.cf-workloads --name
                             "cluster": "outbound|8083||log-cache.cf-system.svc.cluster.local",
 ```
 
+In the route config, the virtual host with name "8083" matches our domain "log-cache.cf-system:8083". In this virtual host, the route with name "default" matches our path "/test" and the "outbound|8083||log-cache.cf-system.svc.cluster.local" is selected. 
+
 ```bash
-$ istioctl proxy-config cluster   test-app-a-test-eb94aee321-0.cf-workloads --fqdn log-cache.cf-system.svc.cluster.local -o json
+$ istioctl proxy-config cluster test-app-a-test-eb94aee321-0.cf-workloads --fqdn log-cache.cf-system.svc.cluster.local -o json
 ...
-edsClusterConfig": {
-            "edsConfig": {
-                "ads": {}
-            },
-            "serviceName": "outbound|8083||log-cache.cf-system.svc.cluster.local"
-        },
+"dynamic_active_clusters": [
+    {
+      "cluster": {
+        ...
+        "edsClusterConfig": {
+              "edsConfig": {
+                  "ads": {}
+              },
+              "serviceName": "outbound|8083||log-cache.cf-system.svc.cluster.local"
+          }, 
+      ...
 ```
 
-Retrieve endpoints from Pilot (via ADS). These endpoints consist of a port and the targeted pod IP (in this case cf-system/log-cache-7bd48bbfc7-8ljxv). 
+The cluster "outbound|8083||log-cache.cf-system.svc.cluster.local" gets its endpoints from Pilot via Aggregated Discovery Service (ADS). These endpoints consist of a port and the targeted `pod IP` (in this case the pod IP of cf-system/log-cache-7bd48bbfc7-8ljxv).
 
 *Note* The list of endpoints is not dumped at `localhost:15000/config_dump`. Use istioctl or `curl -s http://localhost:15000/clusters?format=json` to get it.
 
 ```bash
-$ istioctl proxy-config endpoints   test-app-a-test-eb94aee321-0.cf-workloads --cluster "outbound|8083||log-cache.cf-system.svc.cluster.local"
+$ istioctl proxy-config endpoints test-app-a-test-eb94aee321-0.cf-workloads --cluster "outbound|8083||log-cache.cf-system.svc.cluster.local"
 ENDPOINT             STATUS      OUTLIER CHECK     CLUSTER
-10.96.0.159:8083     HEALTHY     OK                outbound|8083||log-cache.cf-system.svc.cluster.local
+
+
+     HEALTHY     OK                outbound|8083||log-cache.cf-system.svc.cluster.local
 ```
-
-
 
 ```yaml
 kind: VirtualService
@@ -543,7 +552,8 @@ spec:
         port:
           number: 8083
 ```
-
+The picture illustrates the described above config.
+![](doc/egress.png)
 
 ### Push Another App
 
