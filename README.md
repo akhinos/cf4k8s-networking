@@ -436,6 +436,8 @@ This cluster has one static endpoint configured and that is localhost:8080, whic
 
 #### How egress is forwarded from the app container
 
+The `istio-init` init container configures IP tables in such a way that all outgoing traffic is routed to port 15001. There is a listener on this port that has `useOriginalDst` set to true which means it hands the request over to the listener that best matches the original destination of the request. If it can’t find any matching virtual listeners it sends the request to the PassthroughCluster which connects to the destination directly.
+
 `istioctl proxy-config listener  test-app-a-test-eb94aee321-0.cf-workloads --port 15001 -o json`
 ```yaml
 [
@@ -451,6 +453,8 @@ This cluster has one static endpoint configured and that is localhost:8080, whic
     }
 ]
 ```
+
+There is a virtual listener on 0.0.0.0 per each HTTP port for outbound HTTP traffic.
 
 ```bash
 $ istioctl proxy-config listener  test-app-a-test-eb94aee321-0.cf-workloads --port 8083 -o json
