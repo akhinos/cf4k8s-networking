@@ -65,7 +65,7 @@ Envoy Ingress [config](examples/initial/ingress.json) contains:
 - routes
 - secrets
 
-The istio documentation has some information on how-to retrieve the current configuration of the sidecar and ingress envoys in a cluster using the `istioctl` https://istio.io/docs/ops/diagnostic-tools/proxy-cmd/
+The istio documentation has some information on how-to retrieve the current configuration of the sidecar and ingress envoys in a cluster using the `istioctl` https://istio.io/docs/ops/diagnostic-tools/proxy-cmd/. It is also possible to directly use envoy's [admin endpoint](https://www.envoyproxy.io/docs/envoy/latest/operations/admin) on port 15000. For example, dump config via a GET on `/config_dump` or examine endpoints via a GET on `/clusters?format=json`.
 
 In the istio case other envoy proxy runs on the same node (as sidecar container) as the app on the upstream host.
 
@@ -299,8 +299,6 @@ $ istioctl proxy-config listener  test-app-a-test-eb94aee321-0.cf-workloads
 ADDRESS          PORT      TYPE
 0.0.0.0          15001     TCP    # outbound envoy port
 0.0.0.0          15006     TCP    # inbound envoy port
-10.96.4.62       8080      HTTP   # 10.96.4.62 is the pod's cluster IP, this is because the app listens on this port
-10.96.4.62       15020     TCP    # Istio agent status port (for Prometheus telemetry)
 10.68.227.69     8080      TCP    # clusterIP of metric-proxy.cf-system service
 10.66.218.25     8085      TCP    # clusterIP of eirini.cf-system service
 10.68.94.164     24224     TCP    # clusterIP of fluentd-forwarder-ingress.cf-system service
@@ -309,6 +307,8 @@ ADDRESS          PORT      TYPE
 0.0.0.0          80        TCP    # Outbound traffic to capi.cf-system and cfroutesync.cf-system
 0.0.0.0          8083      TCP    # Outbound traffic to log-cache.cf-system service. Check below for detailed config
 0.0.0.0          15090     HTTP   # Envoy Prometheus telemetry
+10.96.4.62       15020     TCP    # deprecated (https://github.com/istio/istio/issues/24147)
+10.96.4.62       8080      HTTP   # deprecated (https://github.com/istio/istio/issues/24147)
 ```
 
 #### How traffic is forwarded from sidecar to app container
@@ -410,48 +410,7 @@ The `istio-init` initContainer configures IP tables in such a way that all incom
           },
 
 ```
-Since incoming traffic has our podIP as dstIP and dstPort 8080 this is the following cluster:
-
-`$ istioctl proxy-config listener  test-app-a-test-eb94aee321-0.cf-workloads --port 8080 --address 10.96.4.62  -o json`
-```yaml
-[
-    {
-        "name": "10.96.4.62_8080",
-        "address": {
-            "socketAddress": {
-                "address": "10.96.4.62",
-                "portValue": 8080
-            }
-        },
-        "filterChains": [
-            {
-                "tlsContext": {
-                    #... configures mTLS
-                },
-                "filters": [
-                    {
-                        "name": "envoy.http_connection_manager",
-                        "typedConfig": {
-                            "routeConfig": {
-                                "name": "inbound|8080|http|s-ef9c974d-adfd-4552-8fcd-19e17f84d8dc.cf-workloads.svc.cluster.local",
-                                "virtualHosts": [
-                                    {
-                                        "name": "inbound|http|8080",
-                                        "domains": [
-                                            "*"
-                                        ],
-                                        "routes": [
-                                            {
-                                                "name": "default",
-                                                "match": {
-                                                    "prefix": "/"
-                                                },
-                                                "route": {
-                                                    "cluster": "inbound|8080|http|s-ef9c974d-adfd-4552-8fcd-19e17f84d8dc.cf-workloads.svc.cluster.local",
-                                                },
-```
-
-The virtualHost `inbound|http|8080` has a matching domain `*` and therefore the packet is using route `default` to cluster `inbound|8080|http|s-ef9c974d-adfd-4552-8fcd-19e17f84d8dc.cf-workloads.svc.cluster.local`.
+Since incoming traffic has our podIP `100.96.4.29` as dstIP and dstPort `8080` the first and the last filter chain match and the last filter chain wins out, because it matches the port. This filter chain has a matching virtualHost `inbound|http|8080` (domain `*` matches all) and therefore the packet is using route `default` to cluster `inbound|8080|http|s-ef9c974d-adfd-4552-8fcd-19e17f84d8dc.cf-workloads.svc.cluster.local`.
 
 `$ istioctl proxy-config cluster  test-app-a-test-eb94aee321-0.cf-workloads --fqdn "inbound|8080|http|s-ef9c974d-adfd-4552-8fcd-19e17f84d8dc.cf-workloads.svc.cluster.local"  -o json`
 ```yaml
