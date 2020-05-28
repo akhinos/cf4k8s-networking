@@ -299,13 +299,13 @@ $ istioctl proxy-config listener  test-app-a-test-eb94aee321-0.cf-workloads
 ADDRESS          PORT      TYPE
 0.0.0.0          15001     TCP    # outbound envoy port
 0.0.0.0          15006     TCP    # inbound envoy port
-10.68.227.69     8080      TCP    # clusterIP of metric-proxy.cf-system service
-10.66.218.25     8085      TCP    # clusterIP of eirini.cf-system service
-10.68.94.164     24224     TCP    # clusterIP of fluentd-forwarder-ingress.cf-system service
-10.66.80.251     8082      TCP    # clusterIP of log-cache-syslog.cf-system service
-0.0.0.0          8080      TCP    # Outbound traffic to uaa.cf-system
-0.0.0.0          80        TCP    # Outbound traffic to capi.cf-system and cfroutesync.cf-system
-0.0.0.0          8083      TCP    # Outbound traffic to log-cache.cf-system service. Check below for detailed config
+10.68.227.69     8080      TCP    # Outbound HTTPS/TCP traffic to metric-proxy.cf-system service
+10.66.218.25     8085      TCP    # Outbound HTTPS/TCP traffic to eirini.cf-system service
+10.68.94.164     24224     TCP    # Outbound HTTPS/TCP traffic to fluentd-forwarder-ingress.cf-system service
+10.66.80.251     8082      TCP    # Outbound HTTPS/TCP traffic to log-cache-syslog.cf-system service
+0.0.0.0          8080      TCP    # Outbound HTTP traffic to uaa.cf-system
+0.0.0.0          80        TCP    # Outbound HTTP traffic to capi.cf-system and cfroutesync.cf-system
+0.0.0.0          8083      TCP    # Outbound HTTP traffic to log-cache.cf-system service. Check below for detailed config
 0.0.0.0          15090     HTTP   # Envoy Prometheus telemetry
 10.96.4.62       15020     TCP    # deprecated (https://github.com/istio/istio/issues/24147)
 10.96.4.62       8080      HTTP   # deprecated (https://github.com/istio/istio/issues/24147)
@@ -553,6 +553,28 @@ spec:
 ```
 The picture illustrates the described above config.
 ![](doc/egress.png)
+
+## Traffic restrictions
+
+There are two `Sidecar` resources deployed by cf-for-k8s. 
+* There is one default Sidecar in the `istio-system` namespace that allows all traffic. This Sidecar is used as the default for all namespaces without a Sidecar.
+* There is a Sidecar resource in the `cf-workload` namespace that restricts egress traffic to other services in the mesh. Only services in the `cf-system` namespace can be reached. Note that this does not affect domains outside the mesh, e.g. google.de.
+```yaml
+kind: Sidecar
+metadata:  #... 
+  name: default
+  namespace: cf-workloads
+spec:
+  egress:
+  - hosts:
+    - cf-system/*
+```
+
+
+### Egress
+
+Egress traffic from an app is always routed via the sidecar. For a more detailed explanation, see Section [How egress is forwarded from the app container](https://github.com/akhinos/cf4k8s-networking#how-egress-is-forwarded-from-the-app-container). In general, Istio is configured to allow arbitrary egress, therefore apps have access to the internet.  
+
 
 ### Push Another App
 
