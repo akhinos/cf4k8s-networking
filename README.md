@@ -315,6 +315,7 @@ ADDRESS          PORT      TYPE
 
 **CAVEAT**: The additional listeners besides outbound and inbound envoy capture ports are obsolete and will not be used for routing. They will be removed in Istio 1.6. See [this issue](https://github.com/istio/istio/issues/24147) for details.
 
+**NOTE:** For a deep-dive into how the sidecar pattern works in istio, check out [Jimmy Song's blog post](https://jimmysong.io/en/blog/sidecar-injection-iptables-and-traffic-routing/) which also features a great [routing workflow diagram](https://jimmysong.io/en/blog/sidecar-injection-iptables-and-traffic-routing/envoy-sidecar-traffic-interception-jimmysong-blog-en.png) that shows exactly how the traffic is routed.
 
 #### How traffic is forwarded from sidecar to app container
 
