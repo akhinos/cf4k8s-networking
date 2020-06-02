@@ -290,7 +290,7 @@ is prevented.
 1. The started sidecar envoy gets pre-configured listeners as described below.
 
 See https://istio.io/docs/ops/deployment/requirements/#ports-used-by-istio for list of special envoy ports.
-Use https://archive.istio.io/v1.4/docs/ops/diagnostic-tools/proxy-cmd/ for acutal debugging advice.
+Use https://archive.istio.io/v1.4/docs/ops/diagnostic-tools/proxy-cmd/ for actual debugging advice.
 
 A virtual listener on 0.0.0.0 per each HTTP port for outbound HTTP traffic (e.g. configured via VirtualService).
 
