@@ -293,6 +293,8 @@ See https://istio.io/docs/ops/deployment/requirements/#ports-used-by-istio for l
 Use https://archive.istio.io/v1.4/docs/ops/diagnostic-tools/proxy-cmd/ for actual debugging advice.
 
 A virtual listener on 0.0.0.0 per each HTTP port for outbound HTTP traffic (e.g. configured via VirtualService).
+A virtual listener per service IP, per each non-HTTP for outbound TCP/HTTPS traffic.
+E.g., in the table below, there are two entries for port `8080`. In order to distinguish HTTP and non-HTTP traffic, there is an additional virtual listener with the IP `10.68.227.69` in place.
 
 ```bash
 $ istioctl proxy-config listener  test-app-a-test-eb94aee321-0.cf-workloads
@@ -438,9 +440,13 @@ This cluster has one static endpoint configured and that is localhost:8080, whic
 
 
 
-#### How egress is forwarded from the app container
+### How egress is forwarded from the app container
 
-In contrast to bosh-deployed CF, there is no NAT gateway in cf-for-k8s. Moreover, there is no Istio egress-gateway, so egress traffic from an app is routed through the sidecar and then directly to its destination outside the cluster.
+In contrast to bosh-deployed CF, there is no NAT gateway in cf-for-k8s. Instead, k8s handles NAT. Gardener-managed K8s clusters have private node IPs and create NAT gateways to perform address translation. How these gateways are implemented depends on the respective infrastructure provider, e.g. the [`Cloud NAT Gateway`](https://cloud.google.com/nat/docs/overview) on GCP is purely software-defined. Since there is no Istio egress-gateway in cf-for-k8s as well, egress traffic from an app is routed through the sidecar and then to its destination outside the cluster using the infrastructure-specific NAT solution.
+
+
+#### Envoy configuration
+
 The `istio-init` init container configures IP tables in such a way that all outgoing traffic is routed to port `15001`. There is a listener on this port that has `useOriginalDst` set to true which means it hands the request over to the listener that best matches the original destination of the request. If it can’t find any matching virtual listeners it sends the request to the `PassthroughCluster` which connects to the destination directly. For any address, where there is no special Istio config, e.g. for google.com:443, the `PassthroughCluster` is used.
 
 `istioctl proxy-config listener  test-app-a-test-eb94aee321-0.cf-workloads --port 15001 -o json`
@@ -536,21 +542,6 @@ ENDPOINT             STATUS      OUTLIER CHECK     CLUSTER
 10.96.0.159:8083     HEALTHY     OK                outbound|8083||log-cache.cf-system.svc.cluster.local
 ```
 
-```yaml
-kind: VirtualService
-..
-spec:
-  gateways:
-  - cf-system/istio-ingressgateway
-  hosts:
-  - log-cache.cf.c21s-1.c21s-dev.shoot.canary.k8s-hana.ondemand.com
-  http:
-  - route:
-    - destination:
-        host: log-cache.cf-system.svc.cluster.local
-        port:
-          number: 8083
-```
 The picture illustrates the described above config.
 ![](doc/egress.png)
 
