@@ -440,7 +440,7 @@ This cluster has one static endpoint configured and that is localhost:8080, whic
 
 #### How egress is forwarded from the app container
 
-In contrast to bosh-deployed CF, there is no NAT gateway in cf-for-k8s. Moreover, there is no Istio egress-gateway, so egress traffic from an app is routed thought the sidecar and then directly to its destination outside the cluster.
+In contrast to bosh-deployed CF, there is no NAT gateway in cf-for-k8s. Moreover, there is no Istio egress-gateway, so egress traffic from an app is routed through the sidecar and then directly to its destination outside the cluster.
 The `istio-init` init container configures IP tables in such a way that all outgoing traffic is routed to port `15001`. There is a listener on this port that has `useOriginalDst` set to true which means it hands the request over to the listener that best matches the original destination of the request. If it can’t find any matching virtual listeners it sends the request to the `PassthroughCluster` which connects to the destination directly. For any address, where there is no special Istio config, e.g. for google.com:443, the `PassthroughCluster` is used.
 
 `istioctl proxy-config listener  test-app-a-test-eb94aee321-0.cf-workloads --port 15001 -o json`
