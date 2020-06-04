@@ -117,7 +117,7 @@ spec:
 Istio:
 
 1. A new VirtualService gets created: `/apis/networking.istio.io/v1alpha3/namespaces/cf-workloads/virtualservices/vs-<unique name>`
-1. The spec contains the public DNS name of the app, the service name to which traffic will be routed as well as HTTP headers to set. 
+1. The spec contains the public DNS name of the app, the service name to which traffic will be routed as well as HTTP headers to set.
 ```yaml
  spec:
     gateways:
@@ -483,7 +483,7 @@ $ istioctl proxy-config listener test-app-a-test-eb94aee321-0.cf-workloads --por
               },
 ...
 ```
-The filter above belongs to the matching listener. `rds` means Route Discovery Service which looks for a route config with name `8083`. 
+The filter above belongs to the matching listener. `rds` means Route Discovery Service which looks for a route config with name `8083`.
 
 ```bash
 $ istioctl proxy-config routes  test-app-a-test-eb94aee321-0.cf-workloads --name 8083 -o json
@@ -515,7 +515,7 @@ $ istioctl proxy-config routes  test-app-a-test-eb94aee321-0.cf-workloads --name
                             "cluster": "outbound|8083||log-cache.cf-system.svc.cluster.local",
 ```
 
-In the route config, the virtual host with name "8083" matches our domain "log-cache.cf-system:8083". In this virtual host, the route with name "default" matches our path "/test" and the "outbound|8083||log-cache.cf-system.svc.cluster.local" is selected. 
+In the route config, the virtual host with name "8083" matches our domain "log-cache.cf-system:8083". In this virtual host, the route with name "default" matches our path "/test" and the "outbound|8083||log-cache.cf-system.svc.cluster.local" is selected.
 
 ```bash
 $ istioctl proxy-config cluster test-app-a-test-eb94aee321-0.cf-workloads --fqdn log-cache.cf-system.svc.cluster.local -o json
@@ -529,7 +529,7 @@ $ istioctl proxy-config cluster test-app-a-test-eb94aee321-0.cf-workloads --fqdn
                   "ads": {}
               },
               "serviceName": "outbound|8083||log-cache.cf-system.svc.cluster.local"
-          }, 
+          },
       ...
 ```
 
@@ -548,12 +548,12 @@ The picture illustrates the described above config.
 
 ## Traffic restrictions
 
-There are two `Sidecar` resources deployed by cf-for-k8s. 
+There are two `Sidecar` resources deployed by cf-for-k8s.
 * There is one default Sidecar in the `istio-system` namespace that allows all traffic. This Sidecar is used as the default for all namespaces without a Sidecar.
 * There is a Sidecar resource in the `cf-workload` namespace that restricts egress traffic to other services in the mesh. Only services in the `cf-system` namespace can be reached. Note that this does not affect domains outside the mesh, e.g. google.de.
 ```yaml
 kind: Sidecar
-metadata:  #... 
+metadata:  #...
   name: default
   namespace: cf-workloads
 spec:
@@ -576,9 +576,50 @@ No changes to envoy config of existing app(s). No direct app-to-app communicatio
 ### Map Additional Route
 
 
-### Debugging
+## Debugging
 
-* Looking into the TCP layer?
+### Looking into the TCP layer
+
+**ksniff**
+
+[ksniff](https://github.com/eldadru/ksniff) is a tool that injects a statically linked tcpdump binary into a running pod. It allows to
+tap into the pod traffic directly and streams the live capture into a local wireshark. Alternatively it can dump tpc traffic into a pcap file.
+
+When using ksniff on CF apps you will stumble over the issue that CF pods are non-privileged. Therefore, the injected tcpdump will not be able to capture any traffic.
+
+A workaround to this is running ksniff with the `-p` option. This will start a second (privileged) pod that will access the underlying docker daemon:
+
+```
+cf apps
+Getting apps in org testorg / space test as admin...
+OK
+
+name         requested state   instances   memory   disk   urls
+helloworld   started           1/1         1G       1G     helloworld.cf.cf4k8s.istio.shoot.canary.k8s-hana.ondemand.com
+
+kubectl get pods -n cf-workloads
+NAME                           READY   STATUS            RESTARTS   AGE
+helloworld-test-8badcc3ee4-0   2/2     Running           0          8m46s
+
+
+./kubectl-sniff-darwin helloworld-test-8badcc3ee4-0 -p -n cf-workloads
+```
+
+This will launch a local wireshark where you can trace the TCP traffic of the target pod.
+
+Test your app:
+```
+curl https://helloworld.cf.cf4k8s.istio.shoot.canary.k8s-hana.ondemand.com
+Hello World
+```
+
+Find your packet on wireshark:
+
+![](doc/ksniff-wireshark.png)
+
+**CAVEAT:** Running ksniff in privileged mode will require additional resources as a new pod is started. This can be an issue if the supporting node
+is near out of resources.
+
 * Looking at k8s networking (in particular when traffic gets routed to another worker node?
 * Looking at the traffic passing through Envoys
 
