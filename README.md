@@ -620,6 +620,289 @@ Find your packet on wireshark:
 **CAVEAT:** Running ksniff in privileged mode will require additional resources as a new pod is started. This can be an issue if the supporting node
 is near out of resources.
 
+**EnvoyFilter**
+
+Aside from external tools, Envoy also supports [tapping](https://www.envoyproxy.io/docs/envoy/v1.12.0/operations/traffic_tapping) into listener or cluster traffic. Currently, there are two ways of tapping:
+- [Socket Tapping](https://www.envoyproxy.io/docs/envoy/v1.12.0/api-v2/api/v2/core/base.proto#envoy-api-msg-core-transportsocket): Directly tap into a socket. Very low-level, similar to tcpdump. (also supports creating pcap files for wireshark)
+- [HTTP Filter](https://www.envoyproxy.io/docs/envoy/v1.12.0/configuration/http/http_filters/tap_filter): A high-level filter plugin. Supports matching on HTTP properties like headers, cookies etc.
+
+For tapping into CF apps, a selector for the app guid is recommended so that only the sidecar envoy of that particular app is tapped.
+
+A [small tool](envoy-tap/tap.sh) has been provided to inject a filter conveniently into a CF app.
+
+After a HTTP filter has been injected the virtualInbound listener configuration will look like this:
+
+```
+    {
+     "version_info": "2020-06-15T08:41:22Z/42",
+     "listener": {
+      "name": "virtualInbound",
+      "address": {
+       "socket_address": {
+        "address": "0.0.0.0",
+        "port_value": 15006
+       }
+      },
+      "filter_chains": [
+       {
+        "filter_chain_match": {
+         "prefix_ranges": [
+          {
+           "address_prefix": "0.0.0.0",
+           "prefix_len": 0
+          }
+         ]
+        },
+        "filters": [
+         {
+          "name": "envoy.tcp_proxy",
+          "typed_config": {
+           "@type": "type.googleapis.com/envoy.config.filter.network.tcp_proxy.v2.TcpProxy",
+           "stat_prefix": "InboundPassthroughClusterIpv4",
+           "access_log": [
+            { (...) }
+             }
+            }
+           ],
+           "cluster": "InboundPassthroughClusterIpv4"
+          }
+         }
+        ],
+        "metadata": {
+         "filter_metadata": {
+          "pilot_meta": {
+           "original_listener_name": "virtualInbound"
+          }
+         }
+        }
+       },
+       {
+        "filter_chain_match": {
+         "prefix_ranges": [
+          {
+           "address_prefix": "100.96.1.6",
+           "prefix_len": 32
+          }
+         ],
+         "destination_port": 15020
+        },
+        "filters": [
+         {
+          "name": "envoy.tcp_proxy",
+          "typed_config": { (...) }
+        ],
+        "metadata": {
+         "filter_metadata": {
+          "pilot_meta": {
+           "original_listener_name": "100.96.1.6_15020"
+          }
+         }
+        }
+       },
+       {
+        "filter_chain_match": {
+         "prefix_ranges": [
+          {
+           "address_prefix": "100.96.1.6",
+           "prefix_len": 32
+          }
+         ],
+         "destination_port": 8080
+        },
+        "tls_context": {(...)},
+        "filters": [
+         {
+          "name": "envoy.http_connection_manager",
+          "typed_config": {
+           "@type": "type.googleapis.com/envoy.config.filter.network.http_connection_manager.v2.HttpConnectionManager",
+           "stat_prefix": "inbound_100.96.1.6_8080",
+           "http_filters": [
+            {
+             "name": "istio_authn",
+             "typed_config": {(...)}
+            },
+            {
+             "name": "mixer",
+             "typed_config": {(...)}
+            },
+            {
+             "name": "envoy.cors"
+            },
+            {
+             "name": "envoy.fault"
+            },
+            {
+             "name": "envoy.filters.http.tap",
+             "config": {
+              "common_config": {
+               "static_config": {
+                "match_config": {
+                 "any_match": true
+                },
+                "output_config": {
+                 "sinks": [
+                  {
+                   "file_per_tap": {
+                    "path_prefix": "/etc/istio/proxy/tap"
+                   },
+                   "format": "JSON_BODY_AS_BYTES"
+                  }
+                 ]
+                }
+               }
+              }
+             }
+            },
+            {
+             "name": "envoy.router"
+            }
+           ],
+(...)
+     "last_updated": "2020-06-15T08:41:22.323Z"
+    }
+   ]
+  },
+```
+
+You can then curl your app to produce some requests:
+```
+curl https://go-app.cf.dom.cfi.shoot.canary.k8s-hana.ondemand.com
+Hello World%
+```
+
+Log on to the envoy to access the recorded requests:
+```
+kubectl exec -it go-app-test-2ab43bc022-0 -c istio-proxy -n cf-workloads -- bash
+istio-proxy@go-app-test-2ab43bc022-0:/$ cd /etc/istio/proxy
+istio-proxy@go-app-test-2ab43bc022-0:/etc/istio/proxy$ ls
+envoy-rev0.json                               tap_11344748775327413437.json  tap_18192093633853801485.json
+tap_11115532091803384888.pb_length_delimited  tap_12484476574378298875.json
+istio-proxy@go-app-test-2ab43bc022-0:/etc/istio/proxy$ cat tap_11344748775327413437.json
+{
+ "http_buffered_trace": {
+  "request": {
+   "headers": [
+    {
+     "key": ":authority",
+     "value": "go-app.cf.dom.cfi.shoot.canary.k8s-hana.ondemand.com"
+    },
+    {
+     "key": ":path",
+     "value": "/"
+    },
+    {
+     "key": ":method",
+     "value": "GET"
+    },
+    {
+     "key": ":scheme",
+     "value": "http"
+    },
+    {
+     "key": "user-agent",
+     "value": "curl/7.64.1"
+    },
+    {
+     "key": "accept",
+     "value": "*/*"
+    },
+    {
+     "key": "x-forwarded-for",
+     "value": "193.16.224.3"
+    },
+    {
+     "key": "x-forwarded-proto",
+     "value": "https"
+    },
+    {
+     "key": "x-envoy-external-address",
+     "value": "193.16.224.3"
+    },
+    {
+     "key": "x-request-id",
+     "value": "9895241b-b354-475b-a967-2af1369016f1"
+    },
+    {
+     "key": "cf-app-id",
+     "value": "4cb788f9-1bdf-4e76-b08c-d40b8580a1cf"
+    },
+    {
+     "key": "cf-app-process-type",
+     "value": "web"
+    },
+    {
+     "key": "cf-organization-id",
+     "value": "e2d0807b-446e-4b57-898c-26fb16d0ff11"
+    },
+    {
+     "key": "cf-space-id",
+     "value": "eac690b5-c8fa-44ec-adf9-da4cff4b76ea"
+    },
+    {
+     "key": "content-length",
+     "value": "0"
+    },
+    {
+     "key": "x-forwarded-client-cert",
+     "value": "By=spiffe://cluster.local/ns/cf-workloads/sa/eirini;Hash=2b8439f99995f1eb05c587d6273ca0099159b355e301bddd2730c685497076fc;Subject=\"\";URI=spiffe://cluster.local/ns/istio-system/sa/istio-ingressgateway-service-account"
+    },
+    {
+     "key": "x-b3-traceid",
+     "value": "6bfa3b14817e262ee03314d5c61c32b0"
+    },
+    {
+     "key": "x-b3-spanid",
+     "value": "06138a2b0d8a7aa5"
+    },
+    {
+     "key": "x-b3-parentspanid",
+     "value": "e03314d5c61c32b0"
+    },
+    {
+     "key": "x-b3-sampled",
+     "value": "0"
+    }
+   ],
+   "trailers": []
+  },
+  "response": {
+   "headers": [
+    {
+     "key": ":status",
+     "value": "200"
+    },
+    {
+     "key": "date",
+     "value": "Mon, 15 Jun 2020 08:41:42 GMT"
+    },
+    {
+     "key": "content-length",
+     "value": "11"
+    },
+    {
+     "key": "content-type",
+     "value": "text/plain; charset=utf-8"
+    },
+    {
+     "key": "x-envoy-upstream-service-time",
+     "value": "0"
+    },
+    {
+     "key": "server",
+     "value": "istio-envoy"
+    }
+   ],
+   "body": {
+    "truncated": false,
+    "as_bytes": "SGVsbG8gV29ybGQ="
+   },
+   "trailers": []
+  }
+ }
+}
+```
+
+
 * Looking at k8s networking (in particular when traffic gets routed to another worker node?
 * Looking at the traffic passing through Envoys
 

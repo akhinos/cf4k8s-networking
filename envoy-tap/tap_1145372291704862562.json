@@ -1,0 +1,114 @@
+{
+ "http_buffered_trace": {
+  "request": {
+   "headers": [
+    {
+     "key": ":authority",
+     "value": "www.google.com"
+    },
+    {
+     "key": ":path",
+     "value": "/"
+    },
+    {
+     "key": ":method",
+     "value": "GET"
+    },
+    {
+     "key": ":scheme",
+     "value": "https"
+    },
+    {
+     "key": "user-agent",
+     "value": "curl/7.64.1"
+    },
+    {
+     "key": "accept",
+     "value": "*/*"
+    },
+    {
+     "key": "x-forwarded-proto",
+     "value": "http"
+    },
+    {
+     "key": "x-request-id",
+     "value": "94071e0d-d0ed-4a58-8d35-3f4f39ba2c28"
+    },
+    {
+     "key": "x-envoy-expected-rq-timeout-ms",
+     "value": "15000"
+    }
+   ],
+   "trailers": []
+  },
+  "response": {
+   "headers": [
+    {
+     "key": ":status",
+     "value": "200"
+    },
+    {
+     "key": "date",
+     "value": "Tue, 09 Jun 2020 08:29:02 GMT"
+    },
+    {
+     "key": "expires",
+     "value": "-1"
+    },
+    {
+     "key": "cache-control",
+     "value": "private, max-age=0"
+    },
+    {
+     "key": "content-type",
+     "value": "text/html; charset=ISO-8859-1"
+    },
+    {
+     "key": "p3p",
+     "value": "CP=\"This is not a P3P policy! See g.co/p3phelp for more info.\""
+    },
+    {
+     "key": "server",
+     "value": "envoy"
+    },
+    {
+     "key": "x-xss-protection",
+     "value": "0"
+    },
+    {
+     "key": "x-frame-options",
+     "value": "SAMEORIGIN"
+    },
+    {
+     "key": "set-cookie",
+     "value": "1P_JAR=2020-06-09-08; expires=Thu, 09-Jul-2020 08:29:02 GMT; path=/; domain=.google.com; Secure"
+    },
+    {
+     "key": "set-cookie",
+     "value": "NID=204=MlXDefz261nPV2vV7KwAxMhyCAh26XqqgN2u5ilS_GCCNIou3emF9S_m9ApKrleEaZcawmF1DxiUsPTFDHxVSzjvTYkdxTi9WX4PvFHX3SbkCj0mOsylTLyWm-iop3MshRwGSfvkBi2V-93PPK45DO4wNENkGt_0EOGLOBT8uw8; expires=Wed, 09-Dec-2020 08:29:02 GMT; path=/; domain=.google.com; HttpOnly"
+    },
+    {
+     "key": "alt-svc",
+     "value": "h3-27=\":443\"; ma=2592000,h3-25=\":443\"; ma=2592000,h3-T050=\":443\"; ma=2592000,h3-Q050=\":443\"; ma=2592000,h3-Q049=\":443\"; ma=2592000,h3-Q048=\":443\"; ma=2592000,h3-Q046=\":443\"; ma=2592000,h3-Q043=\":443\"; ma=2592000,quic=\":443\"; ma=2592000; v=\"46,43\""
+    },
+    {
+     "key": "accept-ranges",
+     "value": "none"
+    },
+    {
+     "key": "vary",
+     "value": "Accept-Encoding"
+    },
+    {
+     "key": "x-envoy-upstream-service-time",
+     "value": "76"
+    }
+   ],
+   "body": {
+    "truncated": true,
+    "as_bytes": "PCFkb2N0eXBlIGh0bWw+PGh0bWwgaXRlbXNjb3BlPSIiIGl0ZW10eXBlPSJodHRwOi8vc2NoZW1hLm9yZy9XZWJQYWdlIiBsYW5nPSJkZSI+PGhlYWQ+PG1ldGEgY29udGVudD0idGV4dC9odG1sOyBjaGFyc2V0PVVURi04IiBodHRwLWVxdWl2PSJDb250ZW50LVR5cGUiPjxtZXRhIGNvbnRlbnQ9Ii9pbWFnZXMvYnJhbmRpbmcvZ29vZ2xlZy8xeC9nb29nbGVnX3N0YW5kYXJkX2NvbG9yXzEyOGRwLnBuZyIgaXRlbXByb3A9ImltYWdlIj48dGl0bGU+R29vZ2xlPC90aXRsZT48c2NyaXB0IG5vbmNlPSJHdjYwQkpvQ3RMeU5RWnZ4cjV6OTF3PT0iPihmdW5jdGlvbigpe3dpbmRvdy5nb29nbGU9e2tFSTonVGtqZlhxUDdJc2FEc0Fld19JR2dBUScsa0VYUEk6JzAsMjAyMTIzLDMsNCwzMiwxMTUxNTg0LDU2NjMsNzMwLDIyNCw1MTA0LDIwNywzMjA0LDEwLDEyMjYsMzY0LDE0OTksNTc2LDEyNywxMTQsMzgzLDI0Niw1LDk1OSw1NSwzNDAsMTk2LDIxMCw2MzEsMjkxLDUsMzU5LDIsOTgsMTExOSw5NjcsMywxMzgsMTMxLDE0OCwxMTYsMywxNzAsMTEyMzE3OSwxMTk3NzkxLDM1OCw3OCwzMjkwNDAsMTI5NCwxMjM4Myw0ODU1LDMyNjkxLDE1MjQ4LDg2MSwxOTQwMyw5Mjg3LDkxODgsODM4NCw0ODU4LDEzNjIsOTI5MSwzMDI0LDQ3NDMsMTEwMzMsMTgwOCw0MDIwLDk3OCwyMzA5LDU2MjIsNTI5NywyMDU0LDkxOSw4NzQsMTIxNyw5NDA1LDc0MzIsMzg3NCwzMjIxLDQ1MTgsMjc3OSw5MTcsMjI3Nyw4LDI3OTYsODg5LDcwNCwxMjc5LDM5MCwxODIyLDUzMCwxNDksMTEwMyw4NDAsNTE3LDE0NjYsNTYsMTU4LDQxMDAsMTA5LDIwMywxMTM3LDIsMjA2Myw2MDYsMTgzOSwxODQsNTQ1LDEyMzIsNTIwLDE5NDcsMjIyOSw5NSwzMjgsMTI4MiwxNiwyOTI3LDIzLDIyMjMsNDc0LDEzMzksNzQ4LDEwMzksMzIyNywxOTkwLDg1NSw3LDYwNjgsNjI4Niw0NDU0LDY0Miw1OTgsMTg1MiwyNDU4LDEyMjYsMTQwNiwzMzcsMzY1NCwxMjc0LDEwOCwxNDU2LDE5NTEsOTA4LDIsOTQxLDI2MTQsODgxLDEyNTEsMjY1LDU0MTksMg=="
+   },
+   "trailers": []
+  }
+ }
+}

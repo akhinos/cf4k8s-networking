@@ -1,0 +1,40 @@
+socket_buffered_trace {
+  connection {
+    local_address {
+      socket_address {
+        address: "172.17.0.2"
+        port_value: 10000
+      }
+    }
+    remote_address {
+      socket_address {
+        address: "172.17.0.1"
+        port_value: 46182
+      }
+    }
+  }
+  events {
+    timestamp {
+      seconds: 1591704622
+      nanos: 360630000
+    }
+    read {
+      data {
+        as_bytes: "GET / HTTP/1.1\r\nHost: localhost:10000\r\nUser-Agent: curl/7.64.1\r\nAccept: */*\r\n\r\n"
+      }
+    }
+  }
+  events {
+    timestamp {
+      seconds: 1591704622
+      nanos: 563359000
+    }
+    write {
+      data {
+        as_bytes: "HTTP/1.1 200 OK\r\ndate: Tue, 09 Jun 2020 12:10:22 GMT\r\nexpires: -1\r\ncache-control: private, max-age=0\r\ncontent-type: text/html; charset=ISO-8859-1\r\np3p: CP=\"This is not a P3P policy! See g.co/p3phelp for more info.\"\r\nserver: envoy\r\nx-xss-protection: 0\r\nx-frame-options: SAMEORIGIN\r\nset-cookie: 1P_JAR=2020-06-09-12; expires=Thu, 09-Jul-2020 12:10:22 GMT; path=/; domain=.google.com; Secure\r\nset-cookie: NID=204=lbS7zfmWJb5MvdrqPsD_GNDAe2MpV0PvAWYV3r6fdv_MFiidjqnmvo8GGSNF4jUrNdRQJyJ0yHkKzTpxvCOnPk0mt5VbrTAh8NGWS0-Dg7w5QKl0aMJdC1Y9OTJA9ymZqXRmLG_zptDsZPuU842xxWEVL7jfTuWgJDG1X0N2R3M; expires=Wed, 09-Dec-2020 12:10:22 GMT; path=/; domain=.google.com; HttpOnly\r\nalt-svc: h3-27=\":443\"; ma=2592000,h3-25=\":443\"; ma=2592000,h3-T050=\":443\"; ma=2592000,h3-Q050=\":443\"; ma=2592000,h3-Q049=\":443\"; ma=2592000,h3-Q048=\":443\"; ma=2592000,h3-Q046=\":443\"; ma=2592000,h3-Q043=\":443\"; ma=2592000,quic=\":443\"; ma=2592000; v=\"46,43\"\r\naccept-ranges: none\r\nvary: Accept-Encoding\r\nx-envoy-upstream-service-time: 201\r\ntransfer-encoding: chunked\r"
+        truncated: true
+      }
+    }
+  }
+  write_truncated: true
+}

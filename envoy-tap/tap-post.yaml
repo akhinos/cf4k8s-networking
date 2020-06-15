@@ -1,0 +1,12 @@
+config_id: test_config_id
+tap_config:
+  match_config:
+    and_match:
+      rules:
+        - http_request_headers_match:
+            headers:
+              - name: foo
+                exact_match: bar
+  output_config:
+    sinks:
+      - streaming_admin: {}
