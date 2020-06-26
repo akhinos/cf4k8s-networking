@@ -902,6 +902,16 @@ istio-proxy@go-app-test-2ab43bc022-0:/etc/istio/proxy$ cat tap_11344748775327413
 }
 ```
 
+**Inspektor Gadget**
+
+[Inspektor Gadget](https://github.com/kinvolk/inspektor-gadget) is a collection of K8S tools developed by [Kinvolk](https://kinvolk.io/) to help ease the development of kubernetes workloads. Inspektor Gadget provides a kubectl plugin that has 3 network-related debugging features:
+- tcptop: Shows network connections on a pod, similar to tools like `netstat` or `ss`
+- tcpconnect: Traces tcp connections as they appear on a pod to help develop strict network policies
+- tcptracer: Traces into existing tcp connections, specifically connect, accept and close events.
+
+Unfortunately, we were unable to test Inspektor Gadget on cf4k8s, because it needs to install a privileged daemonset on all nodes which needs kernel source headers to work. This will work only if the node OS supports it, which for Kubernetes Gardener's `Garden Linux` requires [issue 76](https://github.com/gardenlinux/gardenlinux/issues/76) to be fixed.
+
+
 
 * Looking at k8s networking (in particular when traffic gets routed to another worker node?
 * Looking at the traffic passing through Envoys
