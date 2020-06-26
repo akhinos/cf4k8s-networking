@@ -912,10 +912,20 @@ istio-proxy@go-app-test-2ab43bc022-0:/etc/istio/proxy$ cat tap_11344748775327413
 Unfortunately, we were unable to test Inspektor Gadget on cf4k8s, because it needs to install a privileged daemonset on all nodes which needs kernel source headers to work. This will work only if the node OS supports it, which for Kubernetes Gardener's `Garden Linux` requires [issue 76](https://github.com/gardenlinux/gardenlinux/issues/76) to be fixed.
 
 
+### When to use which method of traffic debugging
+Depending on the layer you want to look at different tools are more helpful than others:
 
-* Looking at k8s networking (in particular when traffic gets routed to another worker node?
-* Looking at the traffic passing through Envoys
+|Layer|Task|Recommended Tool|
+|-----|----|----------------|
+|L4|Generic connection tracking similar to `tcpdump`|ksniff|
+|L4|Socket-level filtering on envoy| EnvoyFilter w/ transport_socket|
+|L4|Get an overview of all connections on a pod similar to `netstat`|inspektor gadget tcptop|
+|L7|Find requests to a specific cf app| EnvoyFilter w/ http_filter|
+|L7|Find requests based on http headers| EnvoyFilter w/ http_filter|
+
 
 ### Open Questions
 
+* Looking at k8s networking (in particular when traffic gets routed to another worker node?
+* Looking at the traffic passing through Envoys
 * Istio `istio-system/ingressgateway` is not used.
