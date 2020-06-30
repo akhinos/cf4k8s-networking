@@ -1,5 +1,13 @@
 # CF for K8s networking
 
+<!-- TOC depthFrom:2 depthTo:5 withLinks:1 updateOnSave:1 orderedList:0 -->
+- [Logical Network Traffic](#logical-network-traffic)
+- [Physical Network Traffic](#physical-network-traffic)
+- [Envoy](#envoy)
+- [Debugging](#debugging) 
+
+<!-- /TOC -->
+
 ## Logical Network Traffic
 
 ![](doc/LogicalNetwork.png)
