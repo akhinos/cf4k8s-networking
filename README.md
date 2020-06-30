@@ -35,6 +35,18 @@
 | [Virtual Service for System Services](https://istio.io/docs/reference/config/networking/virtual-service/) | During installation a `VirtualService` is created for each system service: <ul><li>Cloud Controller `api.cf...`</li><li>Log Cache `log-cache.cf...`</li><li>UAA `uaa.cf...`, `*.uaa.cf...`, `login.cf...`, `*.login.cf...` </li></ul>|
 |  [Virtual Service for Applications](https://istio.io/docs/reference/config/networking/virtual-service/)| For each application a `VirtualService` is created. <br/>[An example configuration](examples/k8s-configs/app-virtualservice.yaml). <br/>This `VirtualService` is also responsible to add the required HTTP headers (e.g. `CF-App-Id`). Each `VirtualService` refers to a kubernetes service. [`DestinationRules`](https://istio.io/docs/concepts/traffic-management/#destination-rules) are also part of Istio traffic management. Using destination rules you can configure what happens to traffic for that destination (e.g. traffic policy). <br/>|
 
+### Istiod architecture changes
+Current (v1.4) implementation features three components:
+
+- Pilot
+- Mixer
+- Citadel
+
+https://archive.istio.io/v1.4/docs/concepts/security/architecture.svg
+
+The upcoming architecture will merge them into a single `istiod` component:
+
+https://istio.io/latest/docs/concepts/security/arch-sec.svg
 
 ## Envoy
 
@@ -74,18 +86,6 @@ The istio documentation has some information on how-to retrieve the current conf
 In the istio case other envoy proxy runs on the same node (as sidecar container) as the app on the upstream host.
 
 ![](doc/Envoy_flow.png)
-
-### Istiod architecture changes
-Current (v1.4) implementation features 3 components:
-- pilot
-- mixer
-- citadel
-
-https://archive.istio.io/v1.4/docs/concepts/security/architecture.svg
-
-The upcoming architecture will merge them into a single istiod component:
-
-https://istio.io/docs/concepts/security/arch-sec.svg
 
 ## CloudFoundry, Istio and Envoy Config Diffs
 This section describes what happens during common cf push and map-route use-cases.
