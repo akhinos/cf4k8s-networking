@@ -58,42 +58,27 @@ https://istio.io/latest/docs/concepts/security/arch-sec.svg
 
 ## Envoy
 
-*NOTE:* Envoy first evaluates route rules in virtual services to determine if a particular subset is being routed to. If so, only then will it activate any destination rule policies corresponding to the subset. Consequently, Istio only applies the policies you define for specific subsets in destination rules if you explicitly routed traffic to the corresponding subset. 
-
-The envoyproxy documentation contains a subpage where the basic terminology (listener, upstream, downstream, cluster, ...) of envoy is explained: https://www.envoyproxy.io/docs/envoy/latest/intro/arch_overview/intro/terminology
+Istio’s traffic management model relies on the Envoy proxies that are deployed along with apps.
 
 ![](doc/envoy.png)
 
 | Artefact                                                                                                                                                                                         | Description                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
 | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Downstream Host | A client connecting to Envoy in order to reach a backend app / service|
-| Upstream Cluster | A backend app / service that requests are forwarded to by Envoy using load balancing|
-| Listener | A frontend exposed by Envoy that allows downstream hosts to connect. Think 0.0.0.0:443|
+| Listener | A frontend exposed by Envoy that allows downstream hosts to connect, e.g. 0.0.0.0:443|
 | Filter | Pluggable logic that allows traffic manipulation and routing decisions to upstream clusters|
+| Route | Configuration to which cluster the traffic is forwarded|
+| Upstream Cluster | Endpoints that requests are forwarded to by Envoy using load balancing|
 
-### Log levels
+See [Envoy termonology](https://www.envoyproxy.io/docs/envoy/latest/intro/arch_overview/intro/terminology)
 
-It is possible to increase/set envoy's log level via
-`curl -X POST -s http://localhost:15000/logging?level=debug`. It is also possible to increase the log level for individual loggers. Possible log levels are critical, error, warning, info, debug, trace.
+An example of simple [envoy configuration](examples/simple-envoy.yaml)
 
-### Configuration
-Envoy Ingress [config](examples/initial/ingress.json) contains:
-- clusters
-  - static clusters (for statistics e.g. prometheus)
-  - cluster
-    - type
-    - service_name
-    - circuit breaking (Envoy enforces these limits at network level)
-    - transport_socket (for tls context)
-- listeners
-- routes
-- secrets
+For more details see [request flow](https://www.envoyproxy.io/docs/envoy/latest/intro/life_of_a_request#request-flow)
 
-The istio documentation has some information on how-to retrieve the current configuration of the sidecar and ingress envoys in a cluster using the `istioctl` https://istio.io/docs/ops/diagnostic-tools/proxy-cmd/. It is also possible to directly use envoy's [admin endpoint](https://www.envoyproxy.io/docs/envoy/latest/operations/admin) on port 15000. For example, dump config via a GET on `/config_dump` or examine endpoints via a GET on `/clusters?format=json`.
+The istio documentation has some information on how-to retrieve the current configuration of the sidecar and ingress envoys in a cluster using the [`istioctl`](https://istio.io/docs/ops/diagnostic-tools/proxy-cmd/). It is also possible to directly use envoy's [admin endpoint](https://www.envoyproxy.io/docs/envoy/latest/operations/admin) on port 15000. For example, dump config via a GET on `/config_dump` or examine endpoints via a GET on `/clusters?format=json`.
 
 In the istio case other envoy proxy runs on the same node (as sidecar container) as the app on the upstream host.
-
-![](doc/Envoy_flow.png)
 
 ## CloudFoundry, Istio and Envoy Config Diffs
 This section describes what happens during common cf push and map-route use-cases.
@@ -590,6 +575,11 @@ No changes to envoy config of existing app(s). No direct app-to-app communicatio
 
 ## Debugging
 
+### Log levels
+
+It is possible to increase/set envoy's log level via
+`curl -X POST -s http://localhost:15000/logging?level=debug`. It is also possible to increase the log level for individual loggers. Possible log levels are critical, error, warning, info, debug, trace.
+
 ### Looking into the TCP layer
 
 **ksniff**
@@ -941,3 +931,5 @@ Depending on the layer you want to look at different tools are more helpful than
 * Looking at k8s networking (in particular when traffic gets routed to another worker node?
 * Looking at the traffic passing through Envoys
 * Istio `istio-system/ingressgateway` is not used.
+
+*NOTE:* Envoy first evaluates route rules in virtual services to determine if a particular subset is being routed to. If so, only then will it activate any destination rule policies corresponding to the subset. Consequently, Istio only applies the policies you define for specific subsets in destination rules if you explicitly routed traffic to the corresponding subset. 
