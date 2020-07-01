@@ -5,7 +5,7 @@
 - [Physical Network Traffic](#physical-network-traffic)
 - [Envoy](#envoy)
 - [Debugging](#debugging)
-- [CloudFoundry, Istio and Envoy Config Diffs](#cloudfoundry-istio-and-envoy-config-diffs) 
+- [CloudFoundry, Istio and Envoy Config Diffs](#cloudfoundry-istio-and-envoy-config-diffs)
 
 <!-- /TOC -->
 
@@ -39,7 +39,7 @@
 | [Sidecar](https://istio.io/docs/reference/config/networking/sidecar/) | Every instance(replica) of an app has a sidecar Envoy, which runs in parallel with the app. These Envoys monitors everything about the application.|
 | [Cloud Controller](https://docs.cloudfoundry.org/concepts/architecture/cloud-controller.html)| The Cloud Controller in Cloud Foundry (CF) provides REST API endpoints for clients (developers) to access the system.|
 | [RouteController && Route CR](https://github.com/cloudfoundry/cf-k8s-networking#architecture) | The RouteController watches for updates to the `Route CR` (Route Custom Resource) and translates these into `Kubernetes Service` and `Istio VirtualService` objects.|
-| [Eirini && LRP CR ](https://github.com/cloudfoundry-incubator/eirini#what-is-eirini)| Eirini is a Kubernetes backend for Cloud Foundry. It watches for updates to the `LRP CR` (Long Running Process Custom Resource) and creates the `App Pod` accordingly. |
+| [Eirini ](https://github.com/cloudfoundry-incubator/eirini#what-is-eirini)| Eirini is a Kubernetes backend for Cloud Foundry. It create `StatefulSet`s to deply the applications. |
 | [Gateway](https://istio.io/docs/reference/config/networking/gateway/) | Cloud Foundry uses one single `Gateway` to route the network traffic.|
 | [Virtual Service for System Services](https://istio.io/docs/reference/config/networking/virtual-service/) | During installation a `VirtualService` is created for each system service: <ul><li>Cloud Controller `api.cf...`</li><li>Log Cache `log-cache.cf...`</li><li>UAA `uaa.cf...`, `*.uaa.cf...`, `login.cf...`, `*.login.cf...` </li></ul>|
 |  [Virtual Service for Applications](https://istio.io/docs/reference/config/networking/virtual-service/)| For each application a `VirtualService` is created. <br/>[An example configuration](examples/k8s-configs/app-virtualservice.yaml). <br/>This `VirtualService` is also responsible to add the required HTTP headers (e.g. `CF-App-Id`). Each `VirtualService` refers to a kubernetes service. [`DestinationRules`](https://istio.io/docs/concepts/traffic-management/#destination-rules) are also part of Istio traffic management. Using destination rules you can configure what happens to traffic for that destination (e.g. traffic policy). <br/>|
@@ -918,4 +918,4 @@ Depending on the layer you want to look at different tools are more helpful than
 * Looking at the traffic passing through Envoys
 * Istio `istio-system/ingressgateway` is not used.
 
-*NOTE:* Envoy first evaluates route rules in virtual services to determine if a particular subset is being routed to. If so, only then will it activate any destination rule policies corresponding to the subset. Consequently, Istio only applies the policies you define for specific subsets in destination rules if you explicitly routed traffic to the corresponding subset. 
+*NOTE:* Envoy first evaluates route rules in virtual services to determine if a particular subset is being routed to. If so, only then will it activate any destination rule policies corresponding to the subset. Consequently, Istio only applies the policies you define for specific subsets in destination rules if you explicitly routed traffic to the corresponding subset.
