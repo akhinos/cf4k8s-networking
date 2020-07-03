@@ -557,9 +557,11 @@ No changes to envoy config of existing app(s). No direct app-to-app communicatio
 
 
 ### Map Additional Route
+Map a new route to the existing app test-node-app:
+
 ```cf map-route test-node-app cf.cfi759.istio.shoot.canary.k8s-hana.ondemand.com --hostname my-app```
 
-The CloudController creates a new `Route CR`. This is a representation of cf route. It contains route_guid and a list of destinations: 
+The CloudController creates a new `Route CR`. This is a representation of the cf route. It contains route_guid and a list of destinations: 
 
 ```kubectl get route -n cf-workloads 9fa832fa-4054-430f-9fc4-6d82733df836 -o json                 
 {
@@ -616,7 +618,7 @@ The CloudController creates a new `Route CR`. This is a representation of cf rou
     }
 }
 ```
-The Istio`Virtuals Service` is created by `RouteController`. The owner of the virtual service is the `Route` with the name and uid of the newly created `Route CR`.
+The Istio `Virtuals Service` is created by `RouteController` that watches the `Route CR`.
 
 ```
 kubectl get virtualservices -n cf-workloads vs-1f238ea5cba255ced517ca9036deab2c7a5f662f9ecd9b14c88e2130a929bdc4 -o json
@@ -627,8 +629,7 @@ kubectl get virtualservices -n cf-workloads vs-1f238ea5cba255ced517ca9036deab2c7
         "annotations": {
             "cloudfoundry.org/fqdn": "my-app.cf.cfi759.istio.shoot.canary.k8s-hana.ondemand.com"
         },
-        "creationTimestamp": "2020-07-01T10:32:59Z",
-        "generation": 1,
+        (...)
         "name": "vs-1f238ea5cba255ced517ca9036deab2c7a5f662f9ecd9b14c88e2130a929bdc4",
         "namespace": "cf-workloads",
         "ownerReferences": [
@@ -639,9 +640,7 @@ kubectl get virtualservices -n cf-workloads vs-1f238ea5cba255ced517ca9036deab2c7
                 "uid": "e56b639a-de86-4aba-b6df-af4550348447"
             }
         ],
-        "resourceVersion": "125813",
-        "selfLink": "/apis/networking.istio.io/v1alpha3/namespaces/cf-workloads/virtualservices/vs-1f238ea5cba255ced517ca9036deab2c7a5f662f9ecd9b14c88e2130a929bdc4",
-        "uid": "73b7b7f4-825f-4611-af18-379cdf1e7e46"
+        (...)
     },
     "spec": {
         "gateways": [
@@ -675,8 +674,9 @@ kubectl get virtualservices -n cf-workloads vs-1f238ea5cba255ced517ca9036deab2c7
     }
 }
 ```
+The owner of the virtual service is the `Route` with the name and uid of the newly created `Route CR`.
 
-The `Service` has been created by `RouteController` according to the destination spec of the `Route CR` (backend app). If the `Route CR` defines two destinations, then two `Services` will be created. 
+A new kubernetes `Service` has been created by `RouteController` according to the destination spec of the `Route CR` (backend app). If the `Route CR` defines two destinations, then two `Services` will be created. 
 ```kubectl get services s-746112e9-b9e5-43a8-b48f-457da74720c0 -n cf-workloads -o json
 {
     "apiVersion": "v1",
@@ -701,20 +701,10 @@ The `Service` has been created by `RouteController` according to the destination
                 "uid": "e56b639a-de86-4aba-b6df-af4550348447"
             }
         ],
-        "resourceVersion": "125811",
-        "selfLink": "/api/v1/namespaces/cf-workloads/services/s-746112e9-b9e5-43a8-b48f-457da74720c0",
-        "uid": "41e4c6ae-3600-47f8-8eab-6111fc0de059"
+        (...)
     },
     "spec": {
-        "clusterIP": "100.68.212.9",
-        "ports": [
-            {
-                "name": "http",
-                "port": 8080,
-                "protocol": "TCP",
-                "targetPort": 8080
-            }
-        ],
+        (...)
         "selector": {
             "cloudfoundry.org/app_guid": "a96c7067-c0cd-474a-b83b-68b1980979c2",
             "cloudfoundry.org/process_type": "web"
