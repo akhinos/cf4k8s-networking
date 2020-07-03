@@ -561,6 +561,8 @@ Map a new route to the existing app test-node-app:
 
 ```cf map-route test-node-app cf.cfi759.istio.shoot.canary.k8s-hana.ondemand.com --hostname my-app```
 
+#### Changes on kubernets and cf-gor-k8s artefacts
+
 The CloudController creates a new `Route CR`. This is a representation of the cf route. It contains route_guid and a list of destinations: 
 
 ```kubectl get route -n cf-workloads 9fa832fa-4054-430f-9fc4-6d82733df836 -o json                 
@@ -718,6 +720,9 @@ A new kubernetes `Service` has been created by `RouteController` according to th
 }
 ```
 The owner of the service is the `Route` with the name and uid of the newly created `Route CR`.
+
+#### Changes in Envoy config
+As the app is available via ports 443 and 80, two route entries are added so that the ingress envoy knows how a host name is mapped to a service name.  A new cluster entry is added to the ingress envoy config. No changes in the listener config.  
 ## Debugging
 
 ### Log levels
