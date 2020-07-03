@@ -561,7 +561,7 @@ Map a new route to the existing app test-node-app:
 
 ```cf map-route test-node-app cf.cfi759.istio.shoot.canary.k8s-hana.ondemand.com --hostname my-app```
 
-#### Changes on kubernets and cf-gor-k8s artefacts
+#### Changes on kubernetes and cf-for-k8s components
 
 The CloudController creates a new `Route CR`. This is a representation of the cf route. It contains route_guid and a list of destinations: 
 
