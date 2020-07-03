@@ -557,8 +557,177 @@ No changes to envoy config of existing app(s). No direct app-to-app communicatio
 
 
 ### Map Additional Route
+```cf map-route test-node-app cf.cfi759.istio.shoot.canary.k8s-hana.ondemand.com --hostname my-app```
 
+The CloudController creates a new `Route CR`. This is a representation of cf route. It contains route_guid and a list of destinations: 
 
+```kubectl get route -n cf-workloads 9fa832fa-4054-430f-9fc4-6d82733df836 -o json                 
+{
+    "apiVersion": "networking.cloudfoundry.org/v1alpha1",
+    "kind": "Route",
+    "metadata": {
+        "creationTimestamp": "2020-07-01T10:32:58Z",
+        "finalizers": [
+            "routes.networking.cloudfoundry.org"
+        ],
+        "generation": 3,
+        "labels": {
+            "app.kubernetes.io/component": "cf-networking",
+            "app.kubernetes.io/managed-by": "cloudfoundry",
+            "app.kubernetes.io/name": "9fa832fa-4054-430f-9fc4-6d82733df836",
+            "app.kubernetes.io/part-of": "cloudfoundry",
+            "app.kubernetes.io/version": "0.0.0",
+            "cloudfoundry.org/domain_guid": "48668620-1f88-45ca-a189-c96eda6972aa",
+            "cloudfoundry.org/org_guid": "feb7b668-e649-4d52-b973-ea758ae4cff1",
+            "cloudfoundry.org/route_guid": "9fa832fa-4054-430f-9fc4-6d82733df836",
+            "cloudfoundry.org/space_guid": "159b4307-970a-419e-a6ba-962838a7cb4a"
+        },
+        "name": "9fa832fa-4054-430f-9fc4-6d82733df836",
+        "namespace": "cf-workloads",
+        "resourceVersion": "125809",
+        "selfLink": "/apis/networking.cloudfoundry.org/v1alpha1/namespaces/cf-workloads/routes/9fa832fa-4054-430f-9fc4-6d82733df836",
+        "uid": "e56b639a-de86-4aba-b6df-af4550348447"
+    },
+    "spec": {
+        "destinations": [
+            {
+                "app": {
+                    "guid": "a96c7067-c0cd-474a-b83b-68b1980979c2",
+                    "process": {
+                        "type": "web"
+                    }
+                },
+                "guid": "746112e9-b9e5-43a8-b48f-457da74720c0",
+                "port": 8080,
+                "selector": {
+                    "matchLabels": {
+                        "cloudfoundry.org/app_guid": "a96c7067-c0cd-474a-b83b-68b1980979c2",
+                        "cloudfoundry.org/process_type": "web"
+                    }
+                }
+            }
+        ],
+        "domain": {
+            "internal": false,
+            "name": "cf.cfi759.istio.shoot.canary.k8s-hana.ondemand.com"
+        },
+        "host": "my-app",
+        "url": "my-app.cf.cfi759.istio.shoot.canary.k8s-hana.ondemand.com"
+    }
+}
+```
+The Istio`Virtuals Service` is created by `RouteController`. The owner of the virtual service is the `Route` with the name and uid of the newly created `Route CR`.
+
+```
+kubectl get virtualservices -n cf-workloads vs-1f238ea5cba255ced517ca9036deab2c7a5f662f9ecd9b14c88e2130a929bdc4 -o json
+{
+    "apiVersion": "networking.istio.io/v1alpha3",
+    "kind": "VirtualService",
+    "metadata": {
+        "annotations": {
+            "cloudfoundry.org/fqdn": "my-app.cf.cfi759.istio.shoot.canary.k8s-hana.ondemand.com"
+        },
+        "creationTimestamp": "2020-07-01T10:32:59Z",
+        "generation": 1,
+        "name": "vs-1f238ea5cba255ced517ca9036deab2c7a5f662f9ecd9b14c88e2130a929bdc4",
+        "namespace": "cf-workloads",
+        "ownerReferences": [
+            {
+                "apiVersion": "networking.cloudfoundry.org/v1alpha1",
+                "kind": "Route",
+                "name": "9fa832fa-4054-430f-9fc4-6d82733df836",
+                "uid": "e56b639a-de86-4aba-b6df-af4550348447"
+            }
+        ],
+        "resourceVersion": "125813",
+        "selfLink": "/apis/networking.istio.io/v1alpha3/namespaces/cf-workloads/virtualservices/vs-1f238ea5cba255ced517ca9036deab2c7a5f662f9ecd9b14c88e2130a929bdc4",
+        "uid": "73b7b7f4-825f-4611-af18-379cdf1e7e46"
+    },
+    "spec": {
+        "gateways": [
+            "cf-system/istio-ingressgateway"
+        ],
+        "hosts": [
+            "my-app.cf.cfi759.istio.shoot.canary.k8s-hana.ondemand.com"
+        ],
+        "http": [
+            {
+                "route": [
+                    {
+                        "destination": {
+                            "host": "s-746112e9-b9e5-43a8-b48f-457da74720c0"
+                        },
+                        "headers": {
+                            "request": {
+                                "set": {
+                                    "CF-App-Id": "a96c7067-c0cd-474a-b83b-68b1980979c2",
+                                    "CF-App-Process-Type": "web",
+                                    "CF-Organization-Id": "feb7b668-e649-4d52-b973-ea758ae4cff1",
+                                    "CF-Space-Id": "159b4307-970a-419e-a6ba-962838a7cb4a"
+                                }
+                            }
+                        },
+                        "weight": 100
+                    }
+                ]
+            }
+        ]
+    }
+}
+```
+
+The `Service` has been created by `RouteController` according to the destination spec of the `Route CR` (backend app). If the `Route CR` defines two destinations, then two `Services` will be created. 
+```kubectl get services s-746112e9-b9e5-43a8-b48f-457da74720c0 -n cf-workloads -o json
+{
+    "apiVersion": "v1",
+    "kind": "Service",
+    "metadata": {
+        "annotations": {
+            "cloudfoundry.org/route-fqdn": "my-app.cf.cfi759.istio.shoot.canary.k8s-hana.ondemand.com"
+        },
+        "creationTimestamp": "2020-07-01T10:32:59Z",
+        "labels": {
+            "cloudfoundry.org/app_guid": "a96c7067-c0cd-474a-b83b-68b1980979c2",
+            "cloudfoundry.org/process_type": "web",
+            "cloudfoundry.org/route_guid": "9fa832fa-4054-430f-9fc4-6d82733df836"
+        },
+        "name": "s-746112e9-b9e5-43a8-b48f-457da74720c0",
+        "namespace": "cf-workloads",
+        "ownerReferences": [
+            {
+                "apiVersion": "networking.cloudfoundry.org/v1alpha1",
+                "kind": "Route",
+                "name": "9fa832fa-4054-430f-9fc4-6d82733df836",
+                "uid": "e56b639a-de86-4aba-b6df-af4550348447"
+            }
+        ],
+        "resourceVersion": "125811",
+        "selfLink": "/api/v1/namespaces/cf-workloads/services/s-746112e9-b9e5-43a8-b48f-457da74720c0",
+        "uid": "41e4c6ae-3600-47f8-8eab-6111fc0de059"
+    },
+    "spec": {
+        "clusterIP": "100.68.212.9",
+        "ports": [
+            {
+                "name": "http",
+                "port": 8080,
+                "protocol": "TCP",
+                "targetPort": 8080
+            }
+        ],
+        "selector": {
+            "cloudfoundry.org/app_guid": "a96c7067-c0cd-474a-b83b-68b1980979c2",
+            "cloudfoundry.org/process_type": "web"
+        },
+        "sessionAffinity": "None",
+        "type": "ClusterIP"
+    },
+    "status": {
+        "loadBalancer": {}
+    }
+}
+```
+The owner of the service is the `Route` with the name and uid of the newly created `Route CR`.
 ## Debugging
 
 ### Log levels
