@@ -4,8 +4,8 @@
 - [Logical Network Traffic](#logical-network-traffic)
 - [Physical Network Traffic](#physical-network-traffic)
 - [Envoy](#envoy)
-- [Debugging](#debugging)
 - [CloudFoundry, Istio and Envoy Config Diffs](#cloudfoundry-istio-and-envoy-config-diffs)
+- [Debugging](#debugging)
 
 <!-- /TOC -->
 
@@ -89,7 +89,7 @@ Finally, an additional route is mapped to `test-app-b` and the effects on CF, is
 ### Push Single App
 CF:
 
-1. A new CR of kind "Route" gets created: `/apis/networking.cloudfoundry.org/v1alpha1/namespaces/cf-workloads/routes/<UUID>`
+1. A new CR of kind `Route` gets created: `/apis/networking.cloudfoundry.org/v1alpha1/namespaces/cf-workloads/routes/<UUID>`
 1. The spec contains the new route information:
 ```
 spec:
@@ -114,7 +114,7 @@ spec:
 
 Istio:
 
-1. A new VirtualService gets created: `/apis/networking.istio.io/v1alpha3/namespaces/cf-workloads/virtualservices/vs-<unique name>`
+1. A new `VirtualService` gets created: `/apis/networking.istio.io/v1alpha3/namespaces/cf-workloads/virtualservices/vs-<unique name>`
 1. The spec contains the public DNS name of the app, the service name to which traffic will be routed as well as HTTP headers to set.
 ```yaml
  spec:
@@ -296,9 +296,9 @@ ADDRESS          PORT      TYPE
 10.96.4.62       8080      HTTP   # deprecated (https://github.com/istio/istio/issues/24147)
 ```
 
-**CAVEAT**: The additional listeners besides outbound and inbound envoy capture ports are obsolete and will not be used for routing. They will be removed in Istio 1.6. See [this issue](https://github.com/istio/istio/issues/24147) for details.
+> **CAVEAT**: The additional listeners besides outbound and inbound envoy capture ports are obsolete and will not be used for routing. They will be removed in Istio 1.6. See [this issue](https://github.com/istio/istio/issues/24147) for details.
 
-**NOTE:** For a deep-dive into how the sidecar pattern works in istio, check out [Jimmy Song's blog post](https://jimmysong.io/en/blog/sidecar-injection-iptables-and-traffic-routing/) which also features a great [routing workflow diagram](https://jimmysong.io/en/blog/sidecar-injection-iptables-and-traffic-routing/envoy-sidecar-traffic-interception-jimmysong-blog-en.png) that shows exactly how the traffic is routed.
+> **NOTE:** For a deep-dive into how the sidecar pattern works in istio, check out [Jimmy Song's blog post](https://jimmysong.io/en/blog/sidecar-injection-iptables-and-traffic-routing/) which also features a great [routing workflow diagram](https://jimmysong.io/en/blog/sidecar-injection-iptables-and-traffic-routing/envoy-sidecar-traffic-interception-jimmysong-blog-en.png) that shows exactly how the traffic is routed.
 
 #### How traffic is forwarded from sidecar to app container
 
@@ -426,12 +426,12 @@ This cluster has one static endpoint configured and that is localhost:8080, whic
 
 ### How egress is forwarded from the app container
 
-In contrast to bosh-deployed CF, there is no NAT gateway in cf-for-k8s. Instead, k8s handles NAT. Gardener-managed K8s clusters have private node IPs and create NAT gateways to perform address translation. How these gateways are implemented depends on the respective infrastructure provider, e.g. the [`Cloud NAT Gateway`](https://cloud.google.com/nat/docs/overview) on GCP is purely software-defined. Since there is no Istio egress-gateway in cf-for-k8s as well, egress traffic from an app is routed through the sidecar and then to its destination outside the cluster using the infrastructure-specific NAT solution.
+In contrast to bosh-deployed CF, there is no NAT gateway in cf-for-k8s. Instead, k8s handles NAT. Gardener-managed k8s clusters have private node IPs and create NAT gateways to perform address translation. How these gateways are implemented depends on the respective infrastructure provider, e.g. the [`Cloud NAT Gateway`](https://cloud.google.com/nat/docs/overview) on GCP is purely software-defined. Since there is no Istio egress-gateway in cf-for-k8s as well, egress traffic from an app is routed through the sidecar and then to its destination outside the cluster using the infrastructure-specific NAT solution.
 
 
 #### Envoy configuration
 
-The `istio-init` init container configures IP tables in such a way that all outgoing traffic is routed to port `15001`. There is a listener on this port that has `useOriginalDst` set to true which means it hands the request over to the listener that best matches the original destination of the request. If it can’t find any matching virtual listeners it sends the request to the `PassthroughCluster` which connects to the destination directly. For any address, where there is no special Istio config, e.g. for google.com:443, the `PassthroughCluster` is used.
+The `istio-init` initContainer configures IP tables in such a way that all outgoing traffic is routed to port `15001`. There is a listener on this port that has `useOriginalDst` set to true which means it hands the request over to the listener that best matches the original destination of the request. If it can’t find any matching virtual listeners it sends the request to the `PassthroughCluster` which connects to the destination directly. For any address, where there is no special Istio config, e.g. for google.com:443, the `PassthroughCluster` is used.
 
 `istioctl proxy-config listener  test-app-a-test-eb94aee321-0.cf-workloads --port 15001 -o json`
 ```yaml
@@ -469,7 +469,7 @@ $ istioctl proxy-config listener test-app-a-test-eb94aee321-0.cf-workloads --por
 The filter above belongs to the matching listener. `rds` means Route Discovery Service which looks for a route config with name `8083`.
 
 ```bash
-$ istioctl proxy-config routes  test-app-a-test-eb94aee321-0.cf-workloads --name 8083 -o json
+$ istioctl proxy-config routes test-app-a-test-eb94aee321-0.cf-workloads --name 8083 -o json
 [
     {
         "name": "8083",
@@ -518,7 +518,7 @@ $ istioctl proxy-config cluster test-app-a-test-eb94aee321-0.cf-workloads --fqdn
 
 The cluster "outbound|8083||log-cache.cf-system.svc.cluster.local" gets its endpoints from Pilot via Aggregated Discovery Service (ADS). These endpoints consist of a port and the targeted `pod IP` (in this case the pod IP of cf-system/log-cache-7bd48bbfc7-8ljxv).
 
-*Note:* The list of endpoints is not dumped at `localhost:15000/config_dump`. Use istioctl or `curl -s http://localhost:15000/clusters?format=json` to get it.
+> *Note:* The list of endpoints is not dumped at `localhost:15000/config_dump`. Use istioctl or `curl -s http://localhost:15000/clusters?format=json` to get it.
 
 ```bash
 $ istioctl proxy-config endpoints test-app-a-test-eb94aee321-0.cf-workloads --cluster "outbound|8083||log-cache.cf-system.svc.cluster.local"
@@ -528,27 +528,6 @@ ENDPOINT             STATUS      OUTLIER CHECK     CLUSTER
 
 The picture illustrates the described above config.
 ![](doc/egress.png)
-
-## Traffic restrictions
-
-There are two `Sidecar` resources deployed by cf-for-k8s.
-* There is one default Sidecar in the `istio-system` namespace that allows all traffic. This Sidecar is used as the default for all namespaces without a Sidecar.
-* There is a Sidecar resource in the `cf-workload` namespace that restricts egress traffic to other services in the mesh. Only services in the `cf-system` namespace can be reached. Note that this does not affect domains outside the mesh, e.g. google.de.
-```yaml
-kind: Sidecar
-metadata:  #...
-  name: default
-  namespace: cf-workloads
-spec:
-  egress:
-  - hosts:
-    - cf-system/*
-```
-
-
-### Egress
-
-Egress traffic from an app is always routed via the sidecar. For a more detailed explanation, see Section [How egress is forwarded from the app container](https://github.com/akhinos/cf4k8s-networking#how-egress-is-forwarded-from-the-app-container). In general, Istio is configured to allow arbitrary egress, therefore apps have access to the internet.
 
 
 ### Push Another App
@@ -620,7 +599,7 @@ The CloudController creates a new `Route CR`. This is a representation of the cf
     }
 }
 ```
-The Istio `Virtuals Service` is created by `RouteController` that watches the `Route CR`.
+The Istio `VirtualService` is created by `RouteController` that watches the `Route CR`.
 
 ```
 kubectl get virtualservices -n cf-workloads vs-1f238ea5cba255ced517ca9036deab2c7a5f662f9ecd9b14c88e2130a929bdc4 -o json
@@ -723,12 +702,37 @@ The owner of the service is the `Route` with the name and uid of the newly creat
 
 #### Changes in Envoy config
 As the app is available via ports 443 and 80, two route entries are added so that the ingress envoy knows how a host name is mapped to a service name.  A new cluster entry is added to the ingress envoy config. No changes in the listener config.  
+
+## Traffic restrictions
+
+By default, Istio provides the `Sidecar Envoy` configs. Additionally the rousource of kind [`Sidecar`](https://istio.io/latest/docs/reference/config/networking/sidecar/) can provide a way to fine tune the set of ports, protocols and so on. 
+
+There are two `Sidecar` resources deployed by cf-for-k8s.
+* There is one default Sidecar in the `istio-system` namespace that allows all traffic. This Sidecar is used as the default for all namespaces without a Sidecar.
+* There is a Sidecar resource in the `cf-workload` namespace that restricts egress traffic to other services in the mesh. Only services in the `cf-system` namespace can be reached. Note that this does not affect domains outside the mesh, e.g. google.de.
+```yaml
+kind: Sidecar
+metadata:  #...
+  name: default
+  namespace: cf-workloads
+spec:
+  egress:
+  - hosts:
+    - cf-system/*
+```
+
+
+### Egress
+
+Egress traffic from an app is always routed via the sidecar. For a more detailed explanation, see Section [How egress is forwarded from the app container](https://github.com/akhinos/cf4k8s-networking#how-egress-is-forwarded-from-the-app-container). In general, Istio is configured to allow arbitrary egress, therefore apps have access to the internet.
+
 ## Debugging
 
 ### Log levels
 
-It is possible to increase/set envoy's log level via
-`curl -X POST -s http://localhost:15000/logging?level=debug`. It is also possible to increase the log level for individual loggers. Possible log levels are critical, error, warning, info, debug, trace.
+It is possible to set envoy's log level via
+`curl -X POST -s http://localhost:15000/logging?level=debug`. 
+It is also possible to increase the log level for individual loggers. Possible log levels are critical, error, warning, info, debug, trace.
 
 ### Looking into the TCP layer
 
@@ -769,20 +773,20 @@ Find your packet on wireshark:
 
 ![](doc/ksniff-wireshark.png)
 
-**CAVEAT:** Running ksniff in privileged mode will require additional resources as a new pod is started. This can be an issue if the supporting node
+> **CAVEAT:** Running ksniff in privileged mode will require additional resources as a new pod is started. This can be an issue if the supporting node
 is near out of resources.
 
 **EnvoyFilter**
 
 Aside from external tools, Envoy also supports [tapping](https://www.envoyproxy.io/docs/envoy/v1.12.0/operations/traffic_tapping) into listener or cluster traffic. Currently, there are two ways of tapping:
-- [Socket Tapping](https://www.envoyproxy.io/docs/envoy/v1.12.0/api-v2/api/v2/core/base.proto#envoy-api-msg-core-transportsocket): Directly tap into a socket. Very low-level, similar to tcpdump. (also supports creating pcap files for wireshark)
+- [Socket Tapping](https://www.envoyproxy.io/docs/envoy/v1.12.0/api-v2/api/v2/core/base.proto#envoy-api-msg-core-transportsocket): Directly tap into a socket. Very low-level, similar to tcpdump (also supports creating pcap files for wireshark).
 - [HTTP Filter](https://www.envoyproxy.io/docs/envoy/v1.12.0/configuration/http/http_filters/tap_filter): A high-level filter plugin. Supports matching on HTTP properties like headers, cookies etc.
 
 For tapping into CF apps, a selector for the app guid is recommended so that only the sidecar envoy of that particular app is tapped.
 
 A [small tool](envoy-tap/tap.sh) has been provided to inject a filter conveniently into a CF app.
 
-After a HTTP filter has been injected the virtualInbound listener configuration will look like this:
+After a HTTP filter has been injected the `virtualInbound listener` configuration will look like this:
 
 ```
     {
@@ -916,7 +920,7 @@ After a HTTP filter has been injected the virtualInbound listener configuration 
   },
 ```
 
-You can then curl your app to produce some requests:
+Curl your app to produce some requests:
 ```
 curl https://go-app.cf.dom.cfi.shoot.canary.k8s-hana.ondemand.com
 Hello World%
@@ -1075,11 +1079,3 @@ Depending on the layer you want to look at different tools are more helpful than
 |L7|Find requests to a specific cf app| EnvoyFilter w/ http_filter|istio v1.4, istioctl
 |L7|Find requests based on http headers| EnvoyFilter w/ http_filter|istio v1.4, istioctl
 
-
-### Open Questions
-
-* Looking at k8s networking (in particular when traffic gets routed to another worker node?
-* Looking at the traffic passing through Envoys
-* Istio `istio-system/ingressgateway` is not used.
-
-*NOTE:* Envoy first evaluates route rules in virtual services to determine if a particular subset is being routed to. If so, only then will it activate any destination rule policies corresponding to the subset. Consequently, Istio only applies the policies you define for specific subsets in destination rules if you explicitly routed traffic to the corresponding subset.
