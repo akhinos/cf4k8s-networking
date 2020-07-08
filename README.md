@@ -102,6 +102,8 @@ This section describes what happens during common `cf push` and `map-route` use-
 For this purpose, a single app `test-app-a` is pushed, then another app `test-app-b`.
 Finally, an additional route is mapped to `test-app-b` and the effects on CF, istio and envoy layers are documented.
 
+![](doc/configuration.png)
+
 ### Push Single App
 
 #### Changes on istio and cf-for-k8s components
