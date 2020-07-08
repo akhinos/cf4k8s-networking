@@ -1,26 +1,27 @@
 # CF for K8s networking
 
-<!-- TOC depthfrom:2 depthto:5 withlinks:false updateonsave:false orderedlist:false -->
-
-- Logical Network Traffic
-- Physical Network Traffic
-    - Istiod architecture changes
-- Envoy
-- CloudFoundry, Istio and Envoy Config Diffs
-    - Push Single App
-        - How traffic is forwarded from sidecar to app container
-    - How egress is forwarded from the app container
-        - Envoy configuration
-    - Push Another App
-    - Map Additional Route
-        - Changes on kubernetes and cf-for-k8s components
-        - Changes in Envoy config
-- Traffic restrictions
-    - Egress
-- Debugging
-    - Log levels
-    - Looking into the TCP layer
-    - When to use which method of traffic debugging
+<!-- TOC depthfrom:2 depthto:5 withlinks:true updateonsave:false orderedlist:false -->
+  - [Logical Network Traffic](#logical-network-traffic)
+  - [Physical Network Traffic](#physical-network-traffic)
+    - [Istiod architecture changes](#istiod-architecture-changes)
+  - [Envoy](#envoy)
+  - [CloudFoundry, Istio and Envoy Config Diffs](#cloudfoundry-istio-and-envoy-config-diffs)
+    - [Push Single App](#push-single-app)
+      - [Changes on istio and cf-for-k8s components](#changes-on-istio-and-cf-for-k8s-components)
+      - [Changes in Ingress Envoy config](#changes-in-ingress-envoy-config)
+      - [Changes in Sidecar Envoy config](#changes-in-sidecar-envoy-config)
+      - [How traffic is forwarded from sidecar to app container](#how-traffic-is-forwarded-from-sidecar-to-app-container)
+    - [How egress is forwarded from the app container](#how-egress-is-forwarded-from-the-app-container)
+    - [Push Another App](#push-another-app)
+    - [Map Additional Route](#map-additional-route)
+      - [Changes on istio and cf-for-k8s components](#changes-on-istio-and-cf-for-k8s-components-1)
+      - [Changes in Envoy config](#changes-in-envoy-config)
+  - [Traffic restrictions](#traffic-restrictions)
+    - [Egress](#egress)
+  - [Debugging](#debugging)
+    - [Log levels](#log-levels)
+    - [Looking into the TCP layer](#looking-into-the-tcp-layer)
+    - [When to use which method of traffic debugging](#when-to-use-which-method-of-traffic-debugging)
 
 <!-- /TOC -->
 
@@ -97,15 +98,16 @@ The istio documentation has some information on how-to retrieve the current conf
 In the istio case other envoy proxy runs on the same node (as sidecar container) as the app on the upstream host.
 
 ## CloudFoundry, Istio and Envoy Config Diffs
-This section describes what happens during common cf push and map-route use-cases.
+This section describes what happens during common `cf push` and `map-route` use-cases.
 For this purpose, a single app `test-app-a` is pushed, then another app `test-app-b`.
 Finally, an additional route is mapped to `test-app-b` and the effects on CF, istio and envoy layers are documented.
 
 ### Push Single App
-CF:
+
+#### Changes on istio and cf-for-k8s components
 
 1. A new CR of kind `Route` gets created: `/apis/networking.cloudfoundry.org/v1alpha1/namespaces/cf-workloads/routes/<UUID>`
-1. The spec contains the new route information:
+2. The spec contains the new route information:
 ```
 spec:
   destinations:
@@ -127,10 +129,8 @@ spec:
   url: test-app-a.cf.cf4k8s.istio.shoot.canary.k8s-hana.ondemand.com
 ```
 
-Istio:
-
-1. A new `VirtualService` gets created: `/apis/networking.istio.io/v1alpha3/namespaces/cf-workloads/virtualservices/vs-<unique name>`
-1. The spec contains the public DNS name of the app, the service name to which traffic will be routed as well as HTTP headers to set.
+3. A new `VirtualService` gets created: `/apis/networking.istio.io/v1alpha3/namespaces/cf-workloads/virtualservices/vs-<unique name>`
+4. The spec contains the public DNS name of the app, the service name to which traffic will be routed as well as HTTP headers to set.
 ```yaml
  spec:
     gateways:
@@ -151,7 +151,7 @@ Istio:
           response: {}
 ```
 
-Ingress Envoy:
+#### Changes in Ingress Envoy config
 
 1. Envoy will pick up ingress spec from istio to map a host name to a service name
 2. A new cluster entry is added to the ingress envoy config. (Don't confuse cluster with kubernetes cluster - it's an envoy backend)
@@ -261,7 +261,7 @@ Ingress Envoy:
 ```
 4. As the listeners for port 80 and port 443 are existing, no changes for listeners.
 
-App Sidecar Envoy
+#### Changes in Sidecar Envoy config
 
 1. When the sidecar gets injected, iptables rules are added that will capture all inbound traffic and forward it to 0.0.0.0:15006
 2. Another rule captures all outbound traffic and forwards it to 0.0.0.0:15001
@@ -443,9 +443,6 @@ This cluster has one static endpoint configured and that is localhost:8080, whic
 
 In contrast to bosh-deployed CF, there is no NAT gateway in cf-for-k8s. Instead, k8s handles NAT. Gardener-managed k8s clusters have private node IPs and create NAT gateways to perform address translation. How these gateways are implemented depends on the respective infrastructure provider, e.g. the [`Cloud NAT Gateway`](https://cloud.google.com/nat/docs/overview) on GCP is purely software-defined. Since there is no Istio egress-gateway in cf-for-k8s as well, egress traffic from an app is routed through the sidecar and then to its destination outside the cluster using the infrastructure-specific NAT solution.
 
-
-#### Envoy configuration
-
 The `istio-init` initContainer configures IP tables in such a way that all outgoing traffic is routed to port `15001`. There is a listener on this port that has `useOriginalDst` set to true which means it hands the request over to the listener that best matches the original destination of the request. If it can’t find any matching virtual listeners it sends the request to the `PassthroughCluster` which connects to the destination directly. For any address, where there is no special Istio config, e.g. for google.com:443, the `PassthroughCluster` is used.
 
 `istioctl proxy-config listener  test-app-a-test-eb94aee321-0.cf-workloads --port 15001 -o json`
@@ -533,7 +530,7 @@ $ istioctl proxy-config cluster test-app-a-test-eb94aee321-0.cf-workloads --fqdn
 
 The cluster "outbound|8083||log-cache.cf-system.svc.cluster.local" gets its endpoints from Pilot via Aggregated Discovery Service (ADS). These endpoints consist of a port and the targeted `pod IP` (in this case the pod IP of cf-system/log-cache-7bd48bbfc7-8ljxv).
 
-> *Note:* The list of endpoints is not dumped at `localhost:15000/config_dump`. Use istioctl or `curl -s http://localhost:15000/clusters?format=json` to get it.
+> **NOTE:** The list of endpoints is not dumped at `localhost:15000/config_dump`. Use istioctl or `curl -s http://localhost:15000/clusters?format=json` to get it.
 
 ```bash
 $ istioctl proxy-config endpoints test-app-a-test-eb94aee321-0.cf-workloads --cluster "outbound|8083||log-cache.cf-system.svc.cluster.local"
@@ -555,7 +552,7 @@ Map a new route to the existing app test-node-app:
 
 ```cf map-route test-node-app cf.cfi759.istio.shoot.canary.k8s-hana.ondemand.com --hostname my-app```
 
-#### Changes on kubernetes and cf-for-k8s components
+#### Changes on istio and cf-for-k8s components
 
 The CloudController creates a new `Route CR`. This is a representation of the cf route. It contains route_guid and a list of destinations: 
 
