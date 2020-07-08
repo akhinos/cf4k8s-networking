@@ -1,11 +1,26 @@
 # CF for K8s networking
 
-<!-- TOC depthFrom:2 depthTo:5 withLinks:1 updateOnSave:1 orderedList:0 -->
-- [Logical Network Traffic](#logical-network-traffic)
-- [Physical Network Traffic](#physical-network-traffic)
-- [Envoy](#envoy)
-- [CloudFoundry, Istio and Envoy Config Diffs](#cloudfoundry-istio-and-envoy-config-diffs)
-- [Debugging](#debugging)
+<!-- TOC depthfrom:2 depthto:5 withlinks:false updateonsave:false orderedlist:false -->
+
+- Logical Network Traffic
+- Physical Network Traffic
+    - Istiod architecture changes
+- Envoy
+- CloudFoundry, Istio and Envoy Config Diffs
+    - Push Single App
+        - How traffic is forwarded from sidecar to app container
+    - How egress is forwarded from the app container
+        - Envoy configuration
+    - Push Another App
+    - Map Additional Route
+        - Changes on kubernetes and cf-for-k8s components
+        - Changes in Envoy config
+- Traffic restrictions
+    - Egress
+- Debugging
+    - Log levels
+    - Looking into the TCP layer
+    - When to use which method of traffic debugging
 
 <!-- /TOC -->
 
