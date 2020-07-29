@@ -711,7 +711,7 @@ As the app is available via ports 443 and 80, two route entries are added so tha
 
 ## Traffic restrictions
 
-By default, Istio provides the `Sidecar Envoy` configs. Additionally the rousource of kind [`Sidecar`](https://istio.io/latest/docs/reference/config/networking/sidecar/) can provide a way to fine tune the set of ports, protocols and so on. 
+By default, Istio provides the `Sidecar Envoy` configs. Additionally the resource of kind [`Sidecar`](https://istio.io/latest/docs/reference/config/networking/sidecar/) can provide a way to fine tune the set of ports, protocols and so on. 
 
 There are two `Sidecar` resources deployed by cf-for-k8s.
 * There is one default Sidecar in the `istio-system` namespace that allows all traffic. This Sidecar is used as the default for all namespaces without a Sidecar.
@@ -745,7 +745,7 @@ It is also possible to increase the log level for individual loggers. Possible l
 **ksniff**
 
 [ksniff](https://github.com/eldadru/ksniff) is a tool that injects a statically linked tcpdump binary into a running pod. It allows to
-tap into the pod traffic directly and streams the live capture into a local wireshark. Alternatively it can dump tpc traffic into a pcap file.
+tap into the pod traffic directly and streams the live capture into a local wireshark. Alternatively it can dump tcp traffic into a pcap file.
 
 When using ksniff on CF apps you will stumble over the issue that CF pods are non-privileged. Therefore, the injected tcpdump will not be able to capture any traffic.
 
