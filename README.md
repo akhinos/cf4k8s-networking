@@ -1,6 +1,7 @@
 # CF for K8s networking
 
 <!-- TOC depthfrom:2 depthto:5 withlinks:true updateonsave:false orderedlist:false -->
+  - [Purpose of this Document](#purpose-of-this-document)
   - [Network Traffic](#network-traffic)
   - [Architecture changes of Istio control panel](#architecture-changes-of-istio-control-panel)
   - [Envoy](#envoy)
@@ -23,6 +24,18 @@
     - [When to use which method of traffic debugging](#when-to-use-which-method-of-traffic-debugging)
 
 <!-- /TOC -->
+
+## Purpose of this Document
+This document is meant to be a guide for learning in-depth how the new CF4K8S network stack works. It was created by deploying CF4K8S and observing
+what happens when apps are pushed and traffic flows through the cluster. 
+
+A special focus was put on these areas:
+- Architecture (terminology, physical and logical layout)
+- What happens in Istio and Envoy when CF apps change (push, map-route)
+- How can network traffic be observed / tapped (and how this differs from the BOSH world)
+
+This document shall be a living text that continuously evolves as CF4K8S develops further. Ideally, changes in upstream design or software should be backported to reflect the most current version of CF4K8S. The examples should be kept accurate and debugging tools should work with the respective latest release.
+
 
 ## Network Traffic
 
@@ -63,7 +76,7 @@ Istio’s traffic management model relies on the Envoy proxies that are deployed
 | Route | Configuration to which cluster the traffic is forwarded|
 | Upstream Cluster | Endpoints that requests are forwarded to by Envoy using load balancing|
 
-See [Envoy termonology](https://www.envoyproxy.io/docs/envoy/latest/intro/arch_overview/intro/terminology)
+See [Envoy terminology](https://www.envoyproxy.io/docs/envoy/latest/intro/arch_overview/intro/terminology)
 
 An example of simple [envoy configuration](examples/simple-envoy.yaml)
 
