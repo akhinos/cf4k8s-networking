@@ -38,6 +38,7 @@ This document shall be a living text that continuously evolves as CF4K8S develop
 
 
 ## Network Traffic
+The following diagram shows an overview of the network traffic at runtime. Ingress traffic is forwarded by the loadbalancer to the IngressGateway which has discovered endpoint information about apps and services. The IngressGateway also holds certificates needed for (m)TLS connections to the client. Based on the L7 information of the (HTTP) request, the matching endpoint is selected and the request is forwarded to the sidecar Envoy of that endpoint. The sidecar eventually forwards the request to the app or service process on the local node.
 
 ![](doc/PhysicalNetwork.png)
 
