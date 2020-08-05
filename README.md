@@ -120,9 +120,11 @@ spec:
               CF-Space-Id: 8d18b884-729c-4239-9b88-39c4964a3f86
           response: {}
 ```
-5. A new k8s service gets created: `kubectl get service s-ef9c974d-adfd-4552-8fcd-19e17f84d8dc -n cf-workloads -o json`
+5. A new k8s service of type ClusterIP gets created: `kubectl get service s-ef9c974d-adfd-4552-8fcd-19e17f84d8dc -n cf-workloads -o json`
 
 #### Changes in Ingress Envoy config
+
+The istio documentation contains information on how-to retrieve the current configuration of the sidecar and ingress envoys in a cluster using [istioctl](https://istio.io/latest/docs/ops/diagnostic-tools/istioctl/). Make sure that the istioctl version matches the istio version. It is also possible to directly use envoy's admin endpoint on port 15000. For example, dump config via a GET on /config_dump or examine endpoints via a GET on /clusters?format=json
 
 1. Envoy will pick up ingress spec from istio to map a host name to a service name
 2. A new cluster entry is added to the ingress envoy config. (Don't confuse cluster with kubernetes cluster - it's an envoy backend)
