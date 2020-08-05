@@ -3,8 +3,6 @@
 <!-- TOC depthfrom:2 depthto:5 withlinks:true updateonsave:false orderedlist:false -->
   - [Purpose of this Document](#purpose-of-this-document)
   - [Network Traffic](#network-traffic)
-  - [Architecture changes of Istio control panel](#architecture-changes-of-istio-control-panel)
-  - [Envoy](#envoy)
   - [CloudFoundry, Istio and Envoy Config Diffs](#cloudfoundry-istio-and-envoy-config-diffs)
     - [Push Single App](#push-single-app)
       - [Changes on istio and cf-for-k8s components](#changes-on-istio-and-cf-for-k8s-components)
@@ -49,43 +47,6 @@ The following diagram shows an overview of the network traffic at runtime. Ingre
 | [IngressGateway](https://istio.io/docs/reference/config/networking/gateway/)                                                                                                                     | A part of Istio Traffic Management. The `IngressGateway` is responsible to route the network traffic to different locations like system services of applications. Istio is using [Envoy](https://www.envoyproxy.io/) for this purpose. Envoy is configured by Pilot(see below).|
 | Application | This is the application, which is deployed by the developer and used by the client. The inbound traffic is routed through the Envoy, which is running in a sidecar.
 | Sidecar Envoy | Every instance(replica) of an app has a sidecar Envoy, which runs in parallel with the app on the same pod and shares the network and storage (see more about the [Sidecar Pattern](https://www.magalix.com/blog/the-sidecar-pattern)). These Envoys monitors everything about the application.|
-
-## Architecture changes of Istio control panel
-Current cf-4-k8s version uses Istio v1.4 which implementation features three components:
-
-- Pilot
-- Mixer
-- Citadel
-
-https://archive.istio.io/v1.4/docs/concepts/security/architecture.svg
-
-The upcoming architecture of Istio will merge them into a single `istiod` component:
-
-https://istio.io/latest/docs/concepts/security/arch-sec.svg
-
-## Envoy
-
-Istio’s traffic management model relies on the Envoy proxies that are deployed along with apps.
-
-![](doc/envoy.png)
-
-| Artefact                                                                                                                                                                                         | Description                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
-| ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Downstream Host | A client connecting to Envoy in order to reach a backend app / service|
-| Listener | A frontend exposed by Envoy that allows downstream hosts to connect, e.g. 0.0.0.0:443|
-| Filter | Pluggable logic that allows traffic manipulation and routing decisions to upstream clusters|
-| Route | Configuration to which cluster the traffic is forwarded|
-| Upstream Cluster | Endpoints that requests are forwarded to by Envoy using load balancing|
-
-See [Envoy terminology](https://www.envoyproxy.io/docs/envoy/latest/intro/arch_overview/intro/terminology)
-
-An example of simple [envoy configuration](examples/simple-envoy.yaml)
-
-For more details see [request flow](https://www.envoyproxy.io/docs/envoy/latest/intro/life_of_a_request#request-flow)
-
-The istio documentation has some information on how-to retrieve the current configuration of the sidecar and ingress envoys in a cluster using the [`istioctl`](https://istio.io/docs/ops/diagnostic-tools/proxy-cmd/). It is also possible to directly use envoy's [admin endpoint](https://www.envoyproxy.io/docs/envoy/latest/operations/admin) on port 15000. For example, dump config via a GET on `/config_dump` or examine endpoints via a GET on `/clusters?format=json`.
-
-In the istio case other envoy proxy runs on the same node (as sidecar container) as the app on the upstream host.
 
 ## CloudFoundry, Istio and Envoy Config Diffs
 This section describes what happens during common `cf push` and `map-route` use-cases.
