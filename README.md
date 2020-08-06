@@ -61,7 +61,7 @@ Finally, an additional route is mapped to `test-app-b` and the effects on CF, is
 | [Cloud Controller](https://docs.cloudfoundry.org/concepts/architecture/cloud-controller.html)| The Cloud Controller in Cloud Foundry (CF) provides REST API endpoints for clients (developers) to access the system.|
 | [RouteController && Route CR](https://github.com/cloudfoundry/cf-k8s-networking#architecture) | The RouteController watches for updates to the `Route CR` (Route Custom Resource) and translates these into `Kubernetes Service` and `Istio VirtualService` objects.|
 | [Eirini ](https://github.com/cloudfoundry-incubator/eirini#what-is-eirini)| Eirini is a Kubernetes backend for Cloud Foundry. It create `StatefulSet`s to deploy the applications. |
-|| [App Service](https://kubernetes.io/docs/concepts/services-networking/service/)  | Kubernetes service which is used by istio to retrieve information about the location of the application pods.|
+| [App Service](https://kubernetes.io/docs/concepts/services-networking/service/)  | Kubernetes service which is used by istio to retrieve information about the location of the application pods.|
 | [Virtual Service for Applications](https://istio.io/docs/reference/config/networking/virtual-service/)| For each application a `VirtualService` is created. <br/>[An example configuration](examples/k8s-configs/app-virtualservice.yaml). <br/>This `VirtualService` is also responsible to add the required HTTP headers (e.g. `CF-App-Id`). Each `VirtualService` refers to a kubernetes service. [`DestinationRules`](https://istio.io/docs/concepts/traffic-management/#destination-rules) are also part of Istio traffic management. Using destination rules you can configure what happens to traffic for that destination (e.g. traffic policy).|
 | [Pilot](https://istio.io/docs/ops/deployment/architecture/#pilot)                                                                                                                                | Pilot converts high level routing rules (e.g. `Gateways` or `VirtualServices`) that control traffic behavior into Envoy-specific configurations, and propagates them to the sidecars at runtime. |
 | Application | This is the application, which is deployed by the developer and used by the client. The inbound traffic is routed through the Envoy, which is running in a sidecar.
@@ -76,6 +76,7 @@ Finally, an additional route is mapped to `test-app-b` and the effects on CF, is
 
 1. A new CR of kind `Route` gets created: `/apis/networking.cloudfoundry.org/v1alpha1/namespaces/cf-workloads/routes/<UUID>`
 2. The spec contains the new route information:
+
 ` kubectl get routes -n cf-workloads -o json`
 ```
 spec:
@@ -100,6 +101,7 @@ spec:
 
 3. A new `VirtualService` gets created: `/apis/networking.istio.io/v1alpha3/namespaces/cf-workloads/virtualservices/vs-<unique name>`
 4. The spec contains the public DNS name of the app, the service name to which traffic will be routed as well as HTTP headers to set.
+
 `kubectl get vs -n cf-workloads -o json`
 ```yaml
   spec:
@@ -131,6 +133,7 @@ The istio documentation contains information on how-to retrieve the current conf
    The cluster entry contains info needed for the ingress envoy to open a TLS session with the app sidecar envoy
    It has a reference to the k8s service `s-ef9c974d-adfd-4552-8fcd-19e17f84d8dc`. It is of type "EDS" which means that at runtime
    the istio component "EDS" returns the list of endpoints (IP:port and in future labels) associated with a real k8s service
+
 `istioctl proxy-config cluster istio-ingressgateway-76jht.istio-system --fqdn cf-workloads.svc.cluster.local -o json`
 ```json
 {
@@ -202,6 +205,7 @@ The istio documentation contains information on how-to retrieve the current conf
 ```
 3. A route entry is added so that the ingress envoy knows how a host name is mapped to a service name.
    Request headers are added that will be forwarded to the cf app. The route has a reference to the cluster.
+   
 `istioctl proxy-config routes istio-ingressgateway-76jht.istio-system -o json`
 ```json
               {
@@ -446,7 +450,7 @@ This cluster has one static endpoint configured and that is localhost:8080, whic
 
 ### How egress is forwarded from the app container
 
-In contrast to bosh-deployed CF, there is no NAT gateway in cf-for-k8s. Instead, k8s handles NAT. Gardener-managed k8s clusters have private node IPs and create NAT gateways to perform address translation. How these gateways are implemented depends on the respective infrastructure provider, e.g. the [`Cloud NAT Gateway`](https://cloud.google.com/nat/docs/overview) on GCP is purely software-defined. Since there is no Istio egress-gateway in cf-for-k8s as well, egress traffic from an app is routed through the sidecar and then to its destination outside the cluster using the infrastructure-specific NAT solution.
+In contrast to bosh-deployed CF, there is no NAT gateway in cf-for-k8s. Instead, k8s handles NAT. E.g., [Gardener](https://gardener.cloud/)-managed k8s clusters have private node IPs and create NAT gateways to perform address translation. How these gateways are implemented depends on the respective infrastructure provider, e.g. the [`Cloud NAT Gateway`](https://cloud.google.com/nat/docs/overview) on GCP is purely software-defined. Since there is no Istio egress-gateway in cf-for-k8s as well, egress traffic from an app is routed through the sidecar and then to its destination outside the cluster using the infrastructure-specific NAT solution.
 
 The `istio-init` initContainer configures IP tables in such a way that all outgoing traffic is routed to port `15001`. There is a listener on this port that has `useOriginalDst` set to true which means it hands the request over to the listener that best matches the original destination of the request. If it can’t find any matching virtual listeners it sends the request to the `PassthroughCluster` which connects to the destination directly. For any address, where there is no special Istio config, e.g. for google.com:443, the `PassthroughCluster` is used.
 
