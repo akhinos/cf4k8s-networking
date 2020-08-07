@@ -132,7 +132,7 @@ The istio documentation contains information on how-to retrieve the current conf
 2. A new cluster entry is added to the ingress envoy config. (Don't confuse cluster with kubernetes cluster - it's an envoy backend)
    The cluster entry contains info needed for the ingress envoy to open a TLS session with the app sidecar envoy
    It has a reference to the k8s service `s-ef9c974d-adfd-4552-8fcd-19e17f84d8dc`. It is of type "EDS" which means that at runtime
-   the istio component "EDS" returns the list of endpoints (IP:port and in future labels) associated with a real k8s service
+   envoy's EDS returns the list of endpoints (IP:port and in future labels) associated with a real k8s service.
 
 `istioctl proxy-config cluster istio-ingressgateway-76jht.istio-system --fqdn cf-workloads.svc.cluster.local -o json`
 ```json
@@ -205,7 +205,7 @@ The istio documentation contains information on how-to retrieve the current conf
 ```
 3. A route entry is added so that the ingress envoy knows how a host name is mapped to a service name.
    Request headers are added that will be forwarded to the cf app. The route has a reference to the cluster.
-   
+
 `istioctl proxy-config routes istio-ingressgateway-76jht.istio-system -o json`
 ```json
               {
