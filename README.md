@@ -3,8 +3,6 @@
 <!-- TOC depthfrom:2 depthto:5 withlinks:true updateonsave:false orderedlist:false -->
   - [Purpose of this Document](#purpose-of-this-document)
   - [Network Traffic](#network-traffic)
-  - [Architecture changes of Istio control panel](#architecture-changes-of-istio-control-panel)
-  - [Envoy](#envoy)
   - [CloudFoundry, Istio and Envoy Config Diffs](#cloudfoundry-istio-and-envoy-config-diffs)
     - [Push Single App](#push-single-app)
       - [Changes on istio and cf-for-k8s components](#changes-on-istio-and-cf-for-k8s-components)
@@ -50,49 +48,12 @@ The following diagram shows an overview of the network traffic at runtime. Ingre
 | Application | This is the application, which is deployed by the developer and used by the client. The inbound traffic is routed through the Envoy, which is running in a sidecar.
 | Sidecar Envoy | Every instance(replica) of an app has a sidecar Envoy, which runs in parallel with the app on the same pod and shares the network and storage (see more about the [Sidecar Pattern](https://www.magalix.com/blog/the-sidecar-pattern)). These Envoys monitors everything about the application.|
 
-## Architecture changes of Istio control panel
-Current cf-4-k8s version uses Istio v1.4 which implementation features three components:
-
-- Pilot
-- Mixer
-- Citadel
-
-https://archive.istio.io/v1.4/docs/concepts/security/architecture.svg
-
-The upcoming architecture of Istio will merge them into a single `istiod` component:
-
-https://istio.io/latest/docs/concepts/security/arch-sec.svg
-
-## Envoy
-
-Istio’s traffic management model relies on the Envoy proxies that are deployed along with apps.
-
-![](doc/envoy.png)
-
-| Artefact                                                                                                                                                                                         | Description                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
-| ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Downstream Host | A client connecting to Envoy in order to reach a backend app / service|
-| Listener | A frontend exposed by Envoy that allows downstream hosts to connect, e.g. 0.0.0.0:443|
-| Filter | Pluggable logic that allows traffic manipulation and routing decisions to upstream clusters|
-| Route | Configuration to which cluster the traffic is forwarded|
-| Upstream Cluster | Endpoints that requests are forwarded to by Envoy using load balancing|
-
-See [Envoy terminology](https://www.envoyproxy.io/docs/envoy/latest/intro/arch_overview/intro/terminology)
-
-An example of simple [envoy configuration](examples/simple-envoy.yaml)
-
-For more details see [request flow](https://www.envoyproxy.io/docs/envoy/latest/intro/life_of_a_request#request-flow)
-
-The istio documentation has some information on how-to retrieve the current configuration of the sidecar and ingress envoys in a cluster using the [`istioctl`](https://istio.io/docs/ops/diagnostic-tools/proxy-cmd/). It is also possible to directly use envoy's [admin endpoint](https://www.envoyproxy.io/docs/envoy/latest/operations/admin) on port 15000. For example, dump config via a GET on `/config_dump` or examine endpoints via a GET on `/clusters?format=json`.
-
-In the istio case other envoy proxy runs on the same node (as sidecar container) as the app on the upstream host.
-
 ## CloudFoundry, Istio and Envoy Config Diffs
 This section describes what happens during common `cf push` and `map-route` use-cases.
 For this purpose, a single app `test-app-a` is pushed, then another app `test-app-b`.
 Finally, an additional route is mapped to `test-app-b` and the effects on CF, istio and envoy layers are documented.
 
-![](doc/cf_push.png)
+![](doc/configuration.png)
 
 | Artefact                                                                                                                                                                                         | Description                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
 | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -100,8 +61,7 @@ Finally, an additional route is mapped to `test-app-b` and the effects on CF, is
 | [Cloud Controller](https://docs.cloudfoundry.org/concepts/architecture/cloud-controller.html)| The Cloud Controller in Cloud Foundry (CF) provides REST API endpoints for clients (developers) to access the system.|
 | [RouteController && Route CR](https://github.com/cloudfoundry/cf-k8s-networking#architecture) | The RouteController watches for updates to the `Route CR` (Route Custom Resource) and translates these into `Kubernetes Service` and `Istio VirtualService` objects.|
 | [Eirini ](https://github.com/cloudfoundry-incubator/eirini#what-is-eirini)| Eirini is a Kubernetes backend for Cloud Foundry. It create `StatefulSet`s to deploy the applications. |
-| [Gateway](https://istio.io/docs/reference/config/networking/gateway/) | Cloud Foundry uses one single `Gateway` to route the network traffic.|
-| [App Service](https://kubernetes.io/docs/concepts/services-networking/service/)  | Kubernetes service, which is used to route the traffic to the application pod.|
+| [App Service](https://kubernetes.io/docs/concepts/services-networking/service/)  | Kubernetes service which is used by istio to retrieve information about the location of the application pods.|
 | [Virtual Service for Applications](https://istio.io/docs/reference/config/networking/virtual-service/)| For each application a `VirtualService` is created. <br/>[An example configuration](examples/k8s-configs/app-virtualservice.yaml). <br/>This `VirtualService` is also responsible to add the required HTTP headers (e.g. `CF-App-Id`). Each `VirtualService` refers to a kubernetes service. [`DestinationRules`](https://istio.io/docs/concepts/traffic-management/#destination-rules) are also part of Istio traffic management. Using destination rules you can configure what happens to traffic for that destination (e.g. traffic policy).|
 | [Pilot](https://istio.io/docs/ops/deployment/architecture/#pilot)                                                                                                                                | Pilot converts high level routing rules (e.g. `Gateways` or `VirtualServices`) that control traffic behavior into Envoy-specific configurations, and propagates them to the sidecars at runtime. |
 | Application | This is the application, which is deployed by the developer and used by the client. The inbound traffic is routed through the Envoy, which is running in a sidecar.
@@ -116,96 +76,137 @@ Finally, an additional route is mapped to `test-app-b` and the effects on CF, is
 
 1. A new CR of kind `Route` gets created: `/apis/networking.cloudfoundry.org/v1alpha1/namespaces/cf-workloads/routes/<UUID>`
 2. The spec contains the new route information:
+
+` kubectl get routes -n cf-workloads -o json`
 ```
 spec:
   destinations:
   - app:
-      guid: 292c7ae2-8d4c-449c-bd56-ec40ca644d57
+      guid: eb1534db-8765-430d-adfe-77fd1a8e45a9
       process:
         type: web
-    guid: 7afcae7d-d2ff-4310-9e74-2ec9ca4cca19
+    guid: ef9c974d-adfd-4552-8fcd-19e17f84d8dc
     port: 8080
     selector:
       matchLabels:
-        cloudfoundry.org/app_guid: 292c7ae2-8d4c-449c-bd56-ec40ca644d57
+        cloudfoundry.org/app_guid: eb1534db-8765-430d-adfe-77fd1a8e45a9
         cloudfoundry.org/process_type: web
   domain:
     internal: false
-    name: cf.cf4k8s.istio.shoot.canary.k8s-hana.ondemand.com
+    name: cf.c21s-1.c21s-dev.shoot.canary.k8s-hana.ondemand.com
   host: test-app-a
   path: ""
-  url: test-app-a.cf.cf4k8s.istio.shoot.canary.k8s-hana.ondemand.com
+  url: test-app-a.cf.c21s-1.c21s-dev.shoot.canary.k8s-hana.ondemand.com
 ```
 
 3. A new `VirtualService` gets created: `/apis/networking.istio.io/v1alpha3/namespaces/cf-workloads/virtualservices/vs-<unique name>`
 4. The spec contains the public DNS name of the app, the service name to which traffic will be routed as well as HTTP headers to set.
+
+`kubectl get vs -n cf-workloads -o json`
 ```yaml
- spec:
+  spec:
     gateways:
     - cf-system/istio-ingressgateway
     hosts:
-    - test-app-b.cf.cf4k8s.istio.shoot.canary.k8s-hana.ondemand.com
+    - test-app-a.cf.c21s-1.c21s-dev.shoot.canary.k8s-hana.ondemand.com
     http:
     - route:
       - destination:
-          host: s-833a86e8-414f-4ac7-882b-6bc0c3c40366
+          host: s-ef9c974d-adfd-4552-8fcd-19e17f84d8dc
         headers:
           request:
             set:
-              CF-App-Id: 673ab4f3-101c-41a6-b1e3-aca13da1dd45
+              CF-App-Id: eb1534db-8765-430d-adfe-77fd1a8e45a9
               CF-App-Process-Type: web
-              CF-Organization-Id: e9aab7d8-298f-4aa7-9a77-46a721a36197
-              CF-Space-Id: e7bb5fa9-9496-4179-b244-806b268a8c64
+              CF-Organization-Id: 04a73274-9280-4b99-9abc-e44e3ff4a74e
+              CF-Space-Id: 8d18b884-729c-4239-9b88-39c4964a3f86
           response: {}
 ```
+5. A new k8s service of type ClusterIP gets created: `kubectl get service s-ef9c974d-adfd-4552-8fcd-19e17f84d8dc -n cf-workloads -o json`
 
 #### Changes in Ingress Envoy config
+
+The istio documentation contains information on how-to retrieve the current configuration of the sidecar and ingress envoys in a cluster using [istioctl](https://istio.io/latest/docs/ops/diagnostic-tools/istioctl/). Make sure that the istioctl version matches the istio version. It is also possible to directly use envoy's admin endpoint on port 15000. For example, dump config via a GET on /config_dump or examine endpoints via a GET on /clusters?format=json
 
 1. Envoy will pick up ingress spec from istio to map a host name to a service name
 2. A new cluster entry is added to the ingress envoy config. (Don't confuse cluster with kubernetes cluster - it's an envoy backend)
    The cluster entry contains info needed for the ingress envoy to open a TLS session with the app sidecar envoy
+   It has a reference to the k8s service `s-ef9c974d-adfd-4552-8fcd-19e17f84d8dc`. It is of type "EDS" which means that at runtime
+   envoy's EDS returns the list of endpoints (IP:port and in future labels) associated with a real k8s service.
+
+`istioctl proxy-config cluster istio-ingressgateway-76jht.istio-system --fqdn cf-workloads.svc.cluster.local -o json`
 ```json
-            "name": "outbound|8080||s-833a86e8-414f-4ac7-882b-6bc0c3c40366.cf-workloads.svc.cluster.local",
-            "transport_socket_matches": [
+{
+  "circuit_breakers": {
+    "thresholds": [
+      {
+        "max_connections": 4294967295,
+        "max_pending_requests": 4294967295,
+        "max_requests": 4294967295,
+        "max_retries": 4294967295
+      }
+    ]
+  },
+  "connect_timeout": "1s",
+  "eds_cluster_config": {
+    "eds_config": {
+      "ads": {}
+    },
+    "service_name": "outbound|8080||s-ef9c974d-adfd-4552-8fcd-19e17f84d8dc.cf-workloads.svc.cluster.local"
+  },
+  "name": "outbound|8080||s-ef9c974d-adfd-4552-8fcd-19e17f84d8dc.cf-workloads.svc.cluster.local",
+  "transport_socket_matches": [
+    {
+      "match": {
+        "tlsMode": "istio"
+      },
+      "name": "tlsMode-istio",
+      "transport_socket": {
+        "name": "tls",
+        "typed_config": {
+          "@type": "type.googleapis.com/envoy.api.v2.auth.UpstreamTlsContext",
+          "common_tls_context": {
+            "alpn_protocols": [
+              "istio"
+            ],
+            "tls_certificates": [
               {
-                "match": {
-                  "tlsMode": "istio"
+                "certificate_chain": {
+                  "filename": "/etc/certs/cert-chain.pem"
                 },
-                "name": "tlsMode-istio",
-                "transport_socket": {
-                  "name": "tls",
-                  "typed_config": {
-                    "@type": "type.googleapis.com/envoy.api.v2.auth.UpstreamTlsContext",
-                    "common_tls_context": {
-                      "alpn_protocols": [
-                        "istio"
-                      ],
-                      "tls_certificates": [
-                        {
-                          "certificate_chain": {
-                            "filename": "/etc/certs/cert-chain.pem"
-                          },
-                          "private_key": {
-                            "filename": "/etc/certs/key.pem"
-                          }
-                        }
-                      ],
-                      "validation_context": {
-                        "trusted_ca": {
-                          "filename": "/etc/certs/root-cert.pem"
-                        },
-                        "verify_subject_alt_name": [
-                          "spiffe://cluster.local/ns/cf-workloads/sa/eirini-privileged"
-                        ]
-                      }
-                    },
-                    "sni": "outbound_.8080_._.s-833a86e8-414f-4ac7-882b-6bc0c3c40366.cf-workloads.svc.cluster.local"
-                  }
+                "private_key": {
+                  "filename": "/etc/certs/key.pem"
                 }
+              }
+            ],
+            "validation_context": {
+              "trusted_ca": {
+                "filename": "/etc/certs/root-cert.pem"
               },
+              "verify_subject_alt_name": [
+                "spiffe://cluster.local/ns/cf-workloads/sa/eirini-privileged"
+              ]
+            }
+          },
+          "sni": "outbound_.8080_._.s-ef9c974d-adfd-4552-8fcd-19e17f84d8dc.cf-workloads.svc.cluster.local"
+        }
+      }
+    },
+    {
+      "match": {},
+      "name": "tlsMode-disabled",
+      "transport_socket": {
+        "name": "raw_buffer"
+      }
+    }
+  ],
+  "type": "EDS"
+}
 ```
 3. A route entry is added so that the ingress envoy knows how a host name is mapped to a service name.
-   Request headers are added that will be forwarded to the cf app.
+   Request headers are added that will be forwarded to the cf app. The route has a reference to the cluster.
+
+`istioctl proxy-config routes istio-ingressgateway-76jht.istio-system -o json`
 ```json
               {
                 "domains": [
@@ -449,7 +450,7 @@ This cluster has one static endpoint configured and that is localhost:8080, whic
 
 ### How egress is forwarded from the app container
 
-In contrast to bosh-deployed CF, there is no NAT gateway in cf-for-k8s. Instead, k8s handles NAT. Gardener-managed k8s clusters have private node IPs and create NAT gateways to perform address translation. How these gateways are implemented depends on the respective infrastructure provider, e.g. the [`Cloud NAT Gateway`](https://cloud.google.com/nat/docs/overview) on GCP is purely software-defined. Since there is no Istio egress-gateway in cf-for-k8s as well, egress traffic from an app is routed through the sidecar and then to its destination outside the cluster using the infrastructure-specific NAT solution.
+In contrast to bosh-deployed CF, there is no NAT gateway in cf-for-k8s. Instead, k8s handles NAT. E.g., [Gardener](https://gardener.cloud/)-managed k8s clusters have private node IPs and create NAT gateways to perform address translation. How these gateways are implemented depends on the respective infrastructure provider, e.g. the [`Cloud NAT Gateway`](https://cloud.google.com/nat/docs/overview) on GCP is purely software-defined. Since there is no Istio egress-gateway in cf-for-k8s as well, egress traffic from an app is routed through the sidecar and then to its destination outside the cluster using the infrastructure-specific NAT solution.
 
 The `istio-init` initContainer configures IP tables in such a way that all outgoing traffic is routed to port `15001`. There is a listener on this port that has `useOriginalDst` set to true which means it hands the request over to the listener that best matches the original destination of the request. If it can’t find any matching virtual listeners it sends the request to the `PassthroughCluster` which connects to the destination directly. For any address, where there is no special Istio config, e.g. for google.com:443, the `PassthroughCluster` is used.
 
