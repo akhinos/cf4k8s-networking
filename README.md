@@ -53,7 +53,7 @@ The following diagram shows an overview of the network traffic at runtime. Ingre
 
 ## Envoy Terminology
 
-Istio’s traffic management model relies on the Envoy proxies that are deployed along with apps.
+Istio’s traffic management model relies on the Envoy proxies that are deployed along with apps. This paragraph provides a short overview about the terminology used by Envoy.
 
 ![](doc/envoy.png)
 
@@ -90,7 +90,7 @@ Finally, an additional route is mapped to `test-app-b` and the effects on CF, is
 | [Eirini ](https://github.com/cloudfoundry-incubator/eirini#what-is-eirini)| Eirini is a Kubernetes backend for Cloud Foundry. It create `StatefulSet`s to deploy the applications. |
 | [App Service](https://kubernetes.io/docs/concepts/services-networking/service/)  | Kubernetes service which is used by istio to retrieve information about the location of the application pods.|
 | [Virtual Service for Applications](https://istio.io/docs/reference/config/networking/virtual-service/)| For each application a `VirtualService` is created. <br/>[An example configuration](examples/k8s-configs/app-virtualservice.yaml). <br/>This `VirtualService` is also responsible to add the required HTTP headers (e.g. `CF-App-Id`). Each `VirtualService` refers to a kubernetes service. [`DestinationRules`](https://istio.io/docs/concepts/traffic-management/#destination-rules) are also part of Istio traffic management. Using destination rules you can configure what happens to traffic for that destination (e.g. traffic policy).|
-| [Pilot](https://istio.io/docs/ops/deployment/architecture/#pilot)                                                                                                                                | Pilot converts high level routing rules (e.g. `Gateways` or `VirtualServices`) that control traffic behavior into Envoy-specific configurations, and propagates them to the sidecars at runtime. Since Istio 1.5 istiod takes over this task.|
+| [Pilot](https://istio.io/docs/ops/deployment/architecture/#pilot)                                                                                                                                | Pilot converts high level routing rules (e.g. `Gateways` or `VirtualServices`) that control traffic behavior into Envoy-specific configurations, and propagates them to the sidecars at runtime. Since Istio 1.5 [istiod](https://istio.io/latest/docs/ops/deployment/architecture/#istiod) takes over this task.|
 | Application | This is the application, which is deployed by the developer and used by the client. The inbound traffic is routed through the Envoy, which is running in a sidecar.
 | [Sidecar](https://istio.io/docs/reference/config/networking/sidecar/) | Every instance(replica) of an app has a sidecar Envoy, which runs in parallel with the app. These Envoys monitors everything about the application.|
 | [IngressGateway](https://istio.io/docs/reference/config/networking/gateway/)                                                                                                                     | The `IngressGateway` is responsible to route the network traffic to different locations like system services of applications. The `IngressGateway` is implemented as [`DaemonSet`](https://istio.io/docs/reference/config/networking/gateway/). A `DaemonSet` ensures that all Nodes run a copy of this gateway.<br/>[An example configuration](examples/k8s-configs/istio-ingressgateway.yaml)  |
@@ -101,10 +101,11 @@ Finally, an additional route is mapped to `test-app-b` and the effects on CF, is
 
 #### Changes on istio and cf-for-k8s components
 
-1. A new CR of kind `Route` gets created: `/apis/networking.cloudfoundry.org/v1alpha1/namespaces/cf-workloads/routes/<UUID>`. The spec contains the new route information:
+1. A new CR of kind `Route` gets created. The spec contains the new route information:
 
-` kubectl get routes -n cf-workloads -o yaml`
-```
+```yaml
+kubectl get routes -n cf-workloads 12a832fa-4054-430f-9fc4-6d82733df836 -o yaml
+
 spec:
   destinations:
   - app:
@@ -125,10 +126,11 @@ spec:
   url: test-app-a.cf.c21s-1.c21s-dev.shoot.canary.k8s-hana.ondemand.com
 ```
 
-2. A new `VirtualService` gets created: `/apis/networking.istio.io/v1alpha3/namespaces/cf-workloads/virtualservices/vs-<unique name>`. The spec contains the public DNS name of the app, the service name to which traffic will be routed as well as HTTP headers to set.
+2. A new `VirtualService` gets created. The spec contains the public DNS name of the app, the service name to which traffic will be routed as well as HTTP headers to set.
 
-`kubectl get vs -n cf-workloads -o yaml`
 ```yaml
+  kubectl get virtualservices -n cf-workloads vs-e940065c708e484a1a3ce9bbde53f1316b5c1d078bbff9825ccf0e80e05e0073 -o yaml
+
   spec:
     gateways:
     - cf-system/istio-ingressgateway
@@ -159,8 +161,9 @@ The istio documentation contains information on how-to retrieve the current conf
    It has a reference to the k8s service `s-ef9c974d-adfd-4552-8fcd-19e17f84d8dc`. It is of type "EDS" which means that at runtime
    envoy's EDS returns the list of endpoints (IP:port and in future labels) associated with a real k8s service.
 
-`istioctl proxy-config cluster istio-ingressgateway-76jht.istio-system --fqdn cf-workloads.svc.cluster.local -o json`
 ```json
+istioctl proxy-config cluster istio-ingressgateway-76jht.istio-system --fqdn cf-workloads.svc.cluster.local -o json
+
 {
   "circuit_breakers": {
     "thresholds": [
@@ -231,8 +234,10 @@ The istio documentation contains information on how-to retrieve the current conf
 3. A route entry is added so that the ingress envoy knows how a host name is mapped to a service name.
    Request headers are added that will be forwarded to the cf app. The route has a reference to the cluster.
 
-`istioctl proxy-config routes istio-ingressgateway-76jht.istio-system -o json`
+
 ```json
+istioctl proxy-config routes istio-ingressgateway-76jht.istio-system -o json
+
               {
                 "domains": [
                   "test-app-a.cf.c21s-1.c21s-dev.shoot.canary.k8s-hana.ondemand.com",
@@ -353,8 +358,9 @@ ADDRESS          PORT      TYPE
 
 The `istio-init` initContainer configures IP tables in such a way that all incoming traffic is routed to port 15006. Then, there is a listener on port 15006 which has a listener filter `envoy.listener.original_dst` which restores the original destination address before filter chains apply. Then there is a list of filter chains which match in order of most to least specific destination, i.e. `100.96.4.29/32` is more specific than `0.0.0.0/0` so the higher prefix length wins.
 
-`istioctl proxy-config listener  test-app-a-test-eb94aee321-0.cf-workloads --port 15006 -o json`
 ```yaml
+istioctl proxy-config listener  test-app-a-test-eb94aee321-0.cf-workloads --port 15006 -o yaml
+
         {
           "listener": {
             "address": {
@@ -451,8 +457,10 @@ The `istio-init` initContainer configures IP tables in such a way that all incom
 ```
 Since incoming traffic has our podIP `100.96.4.29` as dstIP and dstPort `8080` the first and the last filter chain match and the last filter chain wins, because it matches the port. This filter chain has a matching virtualHost `inbound|http|8080` (domain `*` matches all) and therefore the packet is using route `default` to cluster `inbound|8080|http|s-ef9c974d-adfd-4552-8fcd-19e17f84d8dc.cf-workloads.svc.cluster.local`.
 
-`$ istioctl proxy-config cluster test-app-a-test-eb94aee321-0.cf-workloads --fqdn "inbound|8080|http|s-ef9c974d-adfd-4552-8fcd-19e17f84d8dc.cf-workloads.svc.cluster.local"  -o json`
-```yaml
+
+```json
+istioctl proxy-config cluster test-app-a-test-eb94aee321-0.cf-workloads --fqdn "inbound|8080|http|s-ef9c974d-adfd-4552-8fcd-19e17f84d8dc.cf-workloads.svc.cluster.local"  -o json
+
 [
     {
         "name": "inbound|8080|http|s-ef9c974d-adfd-4552-8fcd-19e17f84d8dc.cf-workloads.svc.cluster.local",
@@ -468,6 +476,7 @@ Since incoming traffic has our podIP `100.96.4.29` as dstIP and dstPort `8080` t
                                     "socketAddress": {
                                         "address": "127.0.0.1",
                                         "portValue": 8080
+      (...)
 ```
 This cluster has one static endpoint configured and that is localhost:8080, which is where our application is listening.
 
@@ -479,8 +488,9 @@ In contrast to bosh-deployed CF, there is no NAT gateway in cf-for-k8s. Instead,
 
 The `istio-init` initContainer configures IP tables in such a way that all outgoing traffic is routed to port `15001`. There is a listener on this port that has `useOriginalDst` set to true which means it hands the request over to the listener that best matches the original destination of the request. If it can’t find any matching virtual listeners it sends the request to the `PassthroughCluster` which connects to the destination directly. For any address, where there is no special Istio config, e.g. for google.com:443, the `PassthroughCluster` is used.
 
-`istioctl proxy-config listener  test-app-a-test-eb94aee321-0.cf-workloads --port 15001 -o json`
-```yaml
+```json
+istioctl proxy-config listener  test-app-a-test-eb94aee321-0.cf-workloads --port 15001 -o json
+
 [
     {
         "name": "virtualOutbound",
@@ -497,9 +507,10 @@ The `istio-init` initContainer configures IP tables in such a way that all outgo
 
 There is a virtual listener on 0.0.0.0 per each HTTP port for outbound HTTP traffic. We follow the packet sent to the log-cache-service via `curl log-cache.cf-system:8083/test`.
 
-```bash
-$ istioctl proxy-config listener test-app-a-test-eb94aee321-0.cf-workloads --port 8083 -o json
-...
+```json
+istioctl proxy-config listener test-app-a-test-eb94aee321-0.cf-workloads --port 8083 -o json
+
+(...)
 "filters": [
       {
           "name": "envoy.http_connection_manager",
@@ -510,12 +521,13 @@ $ istioctl proxy-config listener test-app-a-test-eb94aee321-0.cf-workloads --por
                   },
                   "routeConfigName": "8083"
               },
-...
+(...)
 ```
 The filter above belongs to the matching listener. `rds` means Route Discovery Service which looks for a route config with name `8083`.
 
-```bash
-$ istioctl proxy-config routes test-app-a-test-eb94aee321-0.cf-workloads --name 8083 -o json
+```json
+istioctl proxy-config routes test-app-a-test-eb94aee321-0.cf-workloads --name 8083 -o json
+
 [
     {
         "name": "8083",
@@ -546,9 +558,10 @@ $ istioctl proxy-config routes test-app-a-test-eb94aee321-0.cf-workloads --name 
 
 In the route config, the virtual host with name "8083" matches our domain "log-cache.cf-system:8083". In this virtual host, the route with name "default" matches our path "/test" and the "outbound|8083||log-cache.cf-system.svc.cluster.local" is selected.
 
-```bash
-$ istioctl proxy-config cluster test-app-a-test-eb94aee321-0.cf-workloads --fqdn log-cache.cf-system.svc.cluster.local -o json
-...
+```json
+istioctl proxy-config cluster test-app-a-test-eb94aee321-0.cf-workloads --fqdn log-cache.cf-system.svc.cluster.local -o json
+
+(...)
 "dynamic_active_clusters": [
     {
       "cluster": {
@@ -559,7 +572,7 @@ $ istioctl proxy-config cluster test-app-a-test-eb94aee321-0.cf-workloads --fqdn
               },
               "serviceName": "outbound|8083||log-cache.cf-system.svc.cluster.local"
           },
-      ...
+      (...)
 ```
 
 The cluster "outbound|8083||log-cache.cf-system.svc.cluster.local" gets its endpoints from Pilot via Aggregated Discovery Service (ADS). These endpoints consist of a port and the targeted `pod IP` (in this case the pod IP of cf-system/log-cache-7bd48bbfc7-8ljxv).
@@ -590,7 +603,9 @@ Map a new route to the existing app test-node-app:
 
 The CloudController creates a new `Route CR`. This is a representation of the cf route. It contains route_guid and a list of destinations: 
 
-```kubectl get route -n cf-workloads 9fa832fa-4054-430f-9fc4-6d82733df836 -o json                 
+```json
+kubectl get route -n cf-workloads 9fa832fa-4054-430f-9fc4-6d82733df836 -o json                 
+
 {
     "apiVersion": "networking.cloudfoundry.org/v1alpha1",
     "kind": "Route",
@@ -647,8 +662,9 @@ The CloudController creates a new `Route CR`. This is a representation of the cf
 ```
 The Istio `VirtualService` is created by `RouteController` that watches the `Route CR`.
 
-```
+```json
 kubectl get virtualservices -n cf-workloads vs-1f238ea5cba255ced517ca9036deab2c7a5f662f9ecd9b14c88e2130a929bdc4 -o json
+
 {
     "apiVersion": "networking.istio.io/v1alpha3",
     "kind": "VirtualService",
