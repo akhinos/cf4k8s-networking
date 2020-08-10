@@ -47,7 +47,7 @@ The following diagram shows an overview of the network traffic at runtime. Ingre
 | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Client | A client which would like to talk to the application.|
 | [LoadBalancer](https://kubernetes.io/docs/tasks/access-application-cluster/create-external-load-balancer/)                                                                              | Exposes the Service externally using a cloud provider’s load balancer.|
-| [IngressGateway](https://istio.io/docs/reference/config/networking/gateway/)                                                                                                                     | A part of Istio Traffic Management. The `IngressGateway` is responsible to route the network traffic to different locations like system services of applications. Istio is using [Envoy](https://www.envoyproxy.io/) for this purpose. Envoy is configured by Pilot(see below).|
+| [IngressGateway](https://istio.io/docs/reference/config/networking/gateway/)                                                                                                                     | A part of Istio Traffic Management. The `IngressGateway` is responsible to route the network traffic to different locations like system services of applications. Istio is using [Envoy](https://www.envoyproxy.io/) for this purpose. Envoy is configured by Pilot/istiod (since Ictio 1.5).|
 | Application | This is the application, which is deployed by the developer and used by the client. The inbound traffic is routed through the Envoy, which is running in a sidecar.
 | Sidecar Envoy | Every instance(replica) of an app has a sidecar Envoy, which runs in parallel with the app on the same pod and shares the network and storage (see more about the [Sidecar Pattern](https://www.magalix.com/blog/the-sidecar-pattern)). These Envoys monitors everything about the application.|
 
@@ -90,7 +90,7 @@ Finally, an additional route is mapped to `test-app-b` and the effects on CF, is
 | [Eirini ](https://github.com/cloudfoundry-incubator/eirini#what-is-eirini)| Eirini is a Kubernetes backend for Cloud Foundry. It create `StatefulSet`s to deploy the applications. |
 | [App Service](https://kubernetes.io/docs/concepts/services-networking/service/)  | Kubernetes service which is used by istio to retrieve information about the location of the application pods.|
 | [Virtual Service for Applications](https://istio.io/docs/reference/config/networking/virtual-service/)| For each application a `VirtualService` is created. <br/>[An example configuration](examples/k8s-configs/app-virtualservice.yaml). <br/>This `VirtualService` is also responsible to add the required HTTP headers (e.g. `CF-App-Id`). Each `VirtualService` refers to a kubernetes service. [`DestinationRules`](https://istio.io/docs/concepts/traffic-management/#destination-rules) are also part of Istio traffic management. Using destination rules you can configure what happens to traffic for that destination (e.g. traffic policy).|
-| [Pilot](https://istio.io/docs/ops/deployment/architecture/#pilot)                                                                                                                                | Pilot converts high level routing rules (e.g. `Gateways` or `VirtualServices`) that control traffic behavior into Envoy-specific configurations, and propagates them to the sidecars at runtime. |
+| [Pilot](https://istio.io/docs/ops/deployment/architecture/#pilot)                                                                                                                                | Pilot converts high level routing rules (e.g. `Gateways` or `VirtualServices`) that control traffic behavior into Envoy-specific configurations, and propagates them to the sidecars at runtime. Since Istio 1.5 istiod takes over this task.|
 | Application | This is the application, which is deployed by the developer and used by the client. The inbound traffic is routed through the Envoy, which is running in a sidecar.
 | [Sidecar](https://istio.io/docs/reference/config/networking/sidecar/) | Every instance(replica) of an app has a sidecar Envoy, which runs in parallel with the app. These Envoys monitors everything about the application.|
 | [IngressGateway](https://istio.io/docs/reference/config/networking/gateway/)                                                                                                                     | The `IngressGateway` is responsible to route the network traffic to different locations like system services of applications. The `IngressGateway` is implemented as [`DaemonSet`](https://istio.io/docs/reference/config/networking/gateway/). A `DaemonSet` ensures that all Nodes run a copy of this gateway.<br/>[An example configuration](examples/k8s-configs/istio-ingressgateway.yaml)  |
@@ -101,8 +101,7 @@ Finally, an additional route is mapped to `test-app-b` and the effects on CF, is
 
 #### Changes on istio and cf-for-k8s components
 
-1. A new CR of kind `Route` gets created: `/apis/networking.cloudfoundry.org/v1alpha1/namespaces/cf-workloads/routes/<UUID>`
-2. The spec contains the new route information:
+1. A new CR of kind `Route` gets created: `/apis/networking.cloudfoundry.org/v1alpha1/namespaces/cf-workloads/routes/<UUID>`. The spec contains the new route information:
 
 ` kubectl get routes -n cf-workloads -o yaml`
 ```
@@ -126,8 +125,7 @@ spec:
   url: test-app-a.cf.c21s-1.c21s-dev.shoot.canary.k8s-hana.ondemand.com
 ```
 
-3. A new `VirtualService` gets created: `/apis/networking.istio.io/v1alpha3/namespaces/cf-workloads/virtualservices/vs-<unique name>`
-4. The spec contains the public DNS name of the app, the service name to which traffic will be routed as well as HTTP headers to set.
+2. A new `VirtualService` gets created: `/apis/networking.istio.io/v1alpha3/namespaces/cf-workloads/virtualservices/vs-<unique name>`. The spec contains the public DNS name of the app, the service name to which traffic will be routed as well as HTTP headers to set.
 
 `kubectl get vs -n cf-workloads -o yaml`
 ```yaml
@@ -149,7 +147,7 @@ spec:
               CF-Space-Id: 8d18b884-729c-4239-9b88-39c4964a3f86
           response: {}
 ```
-5. A new k8s service of type ClusterIP gets created: `kubectl get service s-ef9c974d-adfd-4552-8fcd-19e17f84d8dc -n cf-workloads -o json`
+3. A new k8s service of type ClusterIP gets created: `kubectl get service s-ef9c974d-adfd-4552-8fcd-19e17f84d8dc -n cf-workloads -o yaml`
 
 #### Changes in Ingress Envoy config
 
