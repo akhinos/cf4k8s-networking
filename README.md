@@ -1,8 +1,11 @@
 # CF for K8s networking
 
 <!-- TOC depthfrom:2 depthto:5 withlinks:true updateonsave:false orderedlist:false -->
+
+- [CF for K8s networking](#cf-for-k8s-networking)
   - [Purpose of this Document](#purpose-of-this-document)
   - [Network Traffic](#network-traffic)
+  - [Envoy Terminology](#envoy-terminology)
   - [CloudFoundry, Istio and Envoy Config Diffs](#cloudfoundry-istio-and-envoy-config-diffs)
     - [Push Single App](#push-single-app)
       - [Changes on istio and cf-for-k8s components](#changes-on-istio-and-cf-for-k8s-components)
@@ -48,6 +51,30 @@ The following diagram shows an overview of the network traffic at runtime. Ingre
 | Application | This is the application, which is deployed by the developer and used by the client. The inbound traffic is routed through the Envoy, which is running in a sidecar.
 | Sidecar Envoy | Every instance(replica) of an app has a sidecar Envoy, which runs in parallel with the app on the same pod and shares the network and storage (see more about the [Sidecar Pattern](https://www.magalix.com/blog/the-sidecar-pattern)). These Envoys monitors everything about the application.|
 
+## Envoy Terminology
+
+Istio’s traffic management model relies on the Envoy proxies that are deployed along with apps.
+
+![](doc/envoy.png)
+
+| Artefact                                                                                                                                                                                         | Description                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Downstream Host | A client connecting to Envoy in order to reach a backend app / service|
+| Listener | A frontend exposed by Envoy that allows downstream hosts to connect, e.g. 0.0.0.0:443|
+| Filter | Pluggable logic that allows traffic manipulation and routing decisions to upstream clusters|
+| Route | Configuration to which cluster the traffic is forwarded|
+| Upstream Cluster | Endpoints that requests are forwarded to by Envoy using load balancing|
+
+See [Envoy terminology](https://www.envoyproxy.io/docs/envoy/latest/intro/arch_overview/intro/terminology)
+
+An example of simple [envoy configuration](examples/simple-envoy.yaml)
+
+For more details see [request flow](https://www.envoyproxy.io/docs/envoy/latest/intro/life_of_a_request#request-flow)
+
+The istio documentation has some information on how-to retrieve the current configuration of the sidecar and ingress envoys in a cluster using the [`istioctl`](https://istio.io/docs/ops/diagnostic-tools/proxy-cmd/). It is also possible to directly use envoy's [admin endpoint](https://www.envoyproxy.io/docs/envoy/latest/operations/admin) on port 15000. For example, dump config via a GET on `/config_dump` or examine endpoints via a GET on `/clusters?format=json`.
+
+In the istio case other envoy proxy runs on the same node (as sidecar container) as the app on the upstream host.
+
 ## CloudFoundry, Istio and Envoy Config Diffs
 This section describes what happens during common `cf push` and `map-route` use-cases.
 For this purpose, a single app `test-app-a` is pushed, then another app `test-app-b`.
@@ -77,7 +104,7 @@ Finally, an additional route is mapped to `test-app-b` and the effects on CF, is
 1. A new CR of kind `Route` gets created: `/apis/networking.cloudfoundry.org/v1alpha1/namespaces/cf-workloads/routes/<UUID>`
 2. The spec contains the new route information:
 
-` kubectl get routes -n cf-workloads -o json`
+` kubectl get routes -n cf-workloads -o yaml`
 ```
 spec:
   destinations:
@@ -102,7 +129,7 @@ spec:
 3. A new `VirtualService` gets created: `/apis/networking.istio.io/v1alpha3/namespaces/cf-workloads/virtualservices/vs-<unique name>`
 4. The spec contains the public DNS name of the app, the service name to which traffic will be routed as well as HTTP headers to set.
 
-`kubectl get vs -n cf-workloads -o json`
+`kubectl get vs -n cf-workloads -o yaml`
 ```yaml
   spec:
     gateways:
