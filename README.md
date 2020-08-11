@@ -153,10 +153,76 @@ spec:
 The istio documentation contains information on how-to retrieve the current configuration of the Sidecar and Ingress Envoys in a cluster using [istioctl](https://istio.io/latest/docs/ops/diagnostic-tools/istioctl/). Make sure that the istioctl version matches the istio version. It is also possible to directly use envoy's admin endpoint on port 15000. For example, dump config via a GET on `/config_dump` or examine endpoints via a GET on `/clusters?format=json`
 
 1. Envoy will pick up ingress spec from istio to map a host name to a service name
-2. A new cluster entry is added to the ingress envoy config. (Don't confuse cluster with kubernetes cluster - it's an Envoy backend)
-   The cluster entry contains info needed for the Ingress Envoy to open a TLS session with the app Sidecar Envoy
-   It has a reference to the k8s service `s-ef9c974d-adfd-4552-8fcd-19e17f84d8dc`. It is of type "EDS" which means that at runtime
-   Envoy's EDS returns the list of endpoints (IP:port and in future labels) associated with a real k8s service.
+2. A route entry is added so that the Ingress Envoy knows how a host name is mapped to a service name.
+   Request headers are added that will be forwarded to the cf app. The route has a reference to the cluster.
+
+```json
+$ istioctl proxy-config routes istio-ingressgateway-76jht.istio-system -o json
+
+              {
+                "domains": [
+                  "test-app-a.cf.c21s-1.c21s-dev.shoot.canary.k8s-hana.ondemand.com",
+                  "test-app-a.cf.c21s-1.c21s-dev.shoot.canary.k8s-hana.ondemand.com:80"
+                ],
+                "name": "test-app-a.cf.c21s-1.c21s-dev.shoot.canary.k8s-hana.ondemand.com:80",
+                "routes": [
+                  {
+                    "decorator": {
+                      "operation": "s-ef9c974d-adfd-4552-8fcd-19e17f84d8dc.cf-workloads.svc.cluster.local:8080/*"
+                    },
+                    "match": {
+                      "prefix": "/"
+                    },
+                    "metadata": {
+                      "filter_metadata": {
+                        "istio": {
+                          "config": "/apis/networking/v1alpha3/namespaces/cf-workloads/virtual-service/vs-e940065c708e484a1a3ce9bbde53f1316b5c1d078bbff9825ccf0e80e05e0073"
+                        }
+                      }
+                    },
+                    "request_headers_to_add": [
+                      {
+                        "append": false,
+                        "header": {
+                          "key": "CF-App-Id",
+                          "value": "eb1534db-8765-430d-adfe-77fd1a8e45a9"
+                        }
+                      },
+                      {
+                        "append": false,
+                        "header": {
+                          "key": "CF-App-Process-Type",
+                          "value": "web"
+                        }
+                      },
+                      {
+                        "append": false,
+                        "header": {
+                          "key": "CF-Organization-Id",
+                          "value": "04a73274-9280-4b99-9abc-e44e3ff4a74e"
+                        }
+                      },
+                      {
+                        "append": false,
+                        "header": {
+                          "key": "CF-Space-Id",
+                          "value": "8d18b884-729c-4239-9b88-39c4964a3f86"
+                        }
+                      }
+                    ],
+                    "route": {
+                      "cluster": "outbound|8080||s-ef9c974d-adfd-4552-8fcd-19e17f84d8dc.cf-workloads.svc.cluster.local",
+                      (...)
+                    },
+                    (...)
+                  }
+                ]
+              },
+```
+3. A new cluster entry is added to the ingress envoy config (Don't confuse cluster with kubernetes cluster - it's an Envoy backend).
+   The cluster entry contains info needed for the Ingress Envoy to open a TLS session with the app Sidecar Envoy. 
+
+   > **NOTE**: Use `podname.namespace` to find the cluster config. User `kubectl get pods -n istio-system` to find the matching pod name.
 
 ```json
 $ istioctl proxy-config cluster istio-ingressgateway-76jht.istio-system --fqdn cf-workloads.svc.cluster.local -o json
@@ -228,73 +294,9 @@ $ istioctl proxy-config cluster istio-ingressgateway-76jht.istio-system --fqdn c
   "type": "EDS"
 }
 ```
-3. A route entry is added so that the ingress envoy knows how a host name is mapped to a service name.
-   Request headers are added that will be forwarded to the cf app. The route has a reference to the cluster.
+It has a reference to the k8s service `s-ef9c974d-adfd-4552-8fcd-19e17f84d8dc`. It is of type "EDS" which means that at runtime
+Envoy's EDS ([Endpoint Discovery Service](https://www.envoyproxy.io/docs/envoy/latest/intro/arch_overview/upstream/service_discovery#endpoint-discovery-service-eds)) returns the list of endpoints (IP:port and in future labels) associated with a real k8s service.
 
-
-```json
-$ istioctl proxy-config routes istio-ingressgateway-76jht.istio-system -o json
-
-              {
-                "domains": [
-                  "test-app-a.cf.c21s-1.c21s-dev.shoot.canary.k8s-hana.ondemand.com",
-                  "test-app-a.cf.c21s-1.c21s-dev.shoot.canary.k8s-hana.ondemand.com:80"
-                ],
-                "name": "test-app-a.cf.c21s-1.c21s-dev.shoot.canary.k8s-hana.ondemand.com:80",
-                "routes": [
-                  {
-                    "decorator": {
-                      "operation": "s-ef9c974d-adfd-4552-8fcd-19e17f84d8dc.cf-workloads.svc.cluster.local:8080/*"
-                    },
-                    "match": {
-                      "prefix": "/"
-                    },
-                    "metadata": {
-                      "filter_metadata": {
-                        "istio": {
-                          "config": "/apis/networking/v1alpha3/namespaces/cf-workloads/virtual-service/vs-e940065c708e484a1a3ce9bbde53f1316b5c1d078bbff9825ccf0e80e05e0073"
-                        }
-                      }
-                    },
-                    "request_headers_to_add": [
-                      {
-                        "append": false,
-                        "header": {
-                          "key": "CF-App-Id",
-                          "value": "eb1534db-8765-430d-adfe-77fd1a8e45a9"
-                        }
-                      },
-                      {
-                        "append": false,
-                        "header": {
-                          "key": "CF-App-Process-Type",
-                          "value": "web"
-                        }
-                      },
-                      {
-                        "append": false,
-                        "header": {
-                          "key": "CF-Organization-Id",
-                          "value": "04a73274-9280-4b99-9abc-e44e3ff4a74e"
-                        }
-                      },
-                      {
-                        "append": false,
-                        "header": {
-                          "key": "CF-Space-Id",
-                          "value": "8d18b884-729c-4239-9b88-39c4964a3f86"
-                        }
-                      }
-                    ],
-                    "route": {
-                      "cluster": "outbound|8080||s-ef9c974d-adfd-4552-8fcd-19e17f84d8dc.cf-workloads.svc.cluster.local",
-                      (...)
-                    },
-                    (...)
-                  }
-                ]
-              },
-```
 4. As the listeners for port 80 and port 443 are existing, no changes for listeners.
 
 #### Changes in Sidecar Envoy config
