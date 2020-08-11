@@ -27,7 +27,7 @@
 <!-- /TOC -->
 
 ## Purpose of this Document
-This document is meant to be a guide for learning in-depth how the new CF4K8S network stack works. It was created by deploying CF4K8S and observing
+This document is meant to be a guide for learning in-depth how the new cf-for-k8s network stack works. It was created by deploying cf-for-k8s and observing
 what happens when apps are pushed and traffic flows through the cluster. 
 
 A special focus was put on these areas:
@@ -35,7 +35,7 @@ A special focus was put on these areas:
 - What happens in Istio and Envoy when CF apps change (push, map-route)
 - How can network traffic be observed / tapped (and how this differs from the BOSH world)
 
-This document shall be a living text that continuously evolves as CF4K8S develops further. Ideally, changes in upstream design or software should be backported to reflect the most current version of CF4K8S. The examples should be kept accurate and debugging tools should work with the respective latest release.
+This document shall be a living text that continuously evolves as cf-for-k8s develops further. Ideally, changes in upstream design or software should be backported to reflect the most current version of cf-for-k8s. The examples should be kept accurate and debugging tools should work with the respective latest release.
 
 
 ## Network Traffic
@@ -100,7 +100,7 @@ Finally, an additional route is mapped to `test-app-b` and the effects on CF, is
 1. A new CR of kind `Route` gets created. The spec contains the new route information:
 
 ```yaml
-$kubectl get routes -n cf-workloads 12a832fa-4054-430f-9fc4-6d82733df836 -o yaml
+$ kubectl get routes -n cf-workloads 12a832fa-4054-430f-9fc4-6d82733df836 -o yaml
 
 spec:
   destinations:
@@ -125,7 +125,7 @@ spec:
 2. A new `VirtualService` gets created. The spec contains the public DNS name of the app, the service name to which traffic will be routed as well as HTTP headers to set.
 
 ```yaml
-  $kubectl get virtualservices -n cf-workloads vs-e940065c708e484a1a3ce9bbde53f1316b5c1d078bbff9825ccf0e80e05e0073 -o yaml
+  $ kubectl get virtualservices -n cf-workloads vs-e940065c708e484a1a3ce9bbde53f1316b5c1d078bbff9825ccf0e80e05e0073 -o yaml
 
   spec:
     gateways:
@@ -159,7 +159,7 @@ The istio documentation contains information on how-to retrieve the current conf
    Envoy's EDS returns the list of endpoints (IP:port and in future labels) associated with a real k8s service.
 
 ```json
-istioctl proxy-config cluster istio-ingressgateway-76jht.istio-system --fqdn cf-workloads.svc.cluster.local -o json
+$ istioctl proxy-config cluster istio-ingressgateway-76jht.istio-system --fqdn cf-workloads.svc.cluster.local -o json
 
 {
   "circuit_breakers": {
@@ -233,7 +233,7 @@ istioctl proxy-config cluster istio-ingressgateway-76jht.istio-system --fqdn cf-
 
 
 ```json
-istioctl proxy-config routes istio-ingressgateway-76jht.istio-system -o json
+$ istioctl proxy-config routes istio-ingressgateway-76jht.istio-system -o json
 
               {
                 "domains": [
@@ -356,7 +356,7 @@ ADDRESS          PORT      TYPE
 The `istio-init` initContainer configures IP tables in such a way that all incoming traffic is routed to port 15006. Then, there is a listener on port 15006 which has a listener filter `envoy.listener.original_dst` which restores the original destination address before filter chains apply. Then there is a list of filter chains which match in order of most to least specific destination, i.e. `100.96.4.29/32` is more specific than `0.0.0.0/0` so the higher prefix length wins.
 
 ```yaml
-istioctl proxy-config listener  test-app-a-test-eb94aee321-0.cf-workloads --port 15006 -o yaml
+$ istioctl proxy-config listener  test-app-a-test-eb94aee321-0.cf-workloads --port 15006 -o yaml
 
         {
           "listener": {
@@ -456,7 +456,7 @@ Since incoming traffic has our podIP `100.96.4.29` as dstIP and dstPort `8080` t
 
 
 ```json
-istioctl proxy-config cluster test-app-a-test-eb94aee321-0.cf-workloads --fqdn "inbound|8080|http|s-ef9c974d-adfd-4552-8fcd-19e17f84d8dc.cf-workloads.svc.cluster.local" -o json
+$ istioctl proxy-config cluster test-app-a-test-eb94aee321-0.cf-workloads --fqdn "inbound|8080|http|s-ef9c974d-adfd-4552-8fcd-19e17f84d8dc.cf-workloads.svc.cluster.local" -o json
 
 [
     {
@@ -486,7 +486,7 @@ In contrast to bosh-deployed CF, there is no NAT gateway in cf-for-k8s. Instead,
 The `istio-init` initContainer configures IP tables in such a way that all outgoing traffic is routed to port `15001`. There is a listener on this port that has `useOriginalDst` set to true which means it hands the request over to the listener that best matches the original destination of the request. If it can’t find any matching virtual listeners it sends the request to the `PassthroughCluster` which connects to the destination directly. For any address, where there is no special Istio config, e.g. for google.com:443, the `PassthroughCluster` is used.
 
 ```json
-istioctl proxy-config listener test-app-a-test-eb94aee321-0.cf-workloads --port 15001 -o json
+$ istioctl proxy-config listener test-app-a-test-eb94aee321-0.cf-workloads --port 15001 -o json
 
 [
     {
@@ -523,7 +523,7 @@ istioctl proxy-config listener test-app-a-test-eb94aee321-0.cf-workloads --port 
 The filter above belongs to the matching listener. `rds` means Route Discovery Service which looks for a route config with name `8083`.
 
 ```json
-istioctl proxy-config routes test-app-a-test-eb94aee321-0.cf-workloads --name 8083 -o json
+$ istioctl proxy-config routes test-app-a-test-eb94aee321-0.cf-workloads --name 8083 -o json
 
 [
     {
@@ -556,7 +556,7 @@ istioctl proxy-config routes test-app-a-test-eb94aee321-0.cf-workloads --name 80
 In the route config, the virtual host with name "8083" matches our domain "log-cache.cf-system:8083". In this virtual host, the route with name "default" matches our path "/test" and the "outbound|8083||log-cache.cf-system.svc.cluster.local" is selected.
 
 ```json
-istioctl proxy-config cluster test-app-a-test-eb94aee321-0.cf-workloads --fqdn log-cache.cf-system.svc.cluster.local -o json
+$ istioctl proxy-config cluster test-app-a-test-eb94aee321-0.cf-workloads --fqdn log-cache.cf-system.svc.cluster.local -o json
 
 (...)
 "dynamic_active_clusters": [
@@ -601,7 +601,7 @@ Map a new route to the existing app test-node-app:
 The CloudController creates a new `Route CR`. This is a representation of the cf route. It contains route_guid and a list of destinations: 
 
 ```json
-$kubectl get route -n cf-workloads 9fa832fa-4054-430f-9fc4-6d82733df836 -o json                 
+$ kubectl get route -n cf-workloads 9fa832fa-4054-430f-9fc4-6d82733df836 -o json                 
 
 {
     "apiVersion": "networking.cloudfoundry.org/v1alpha1",
@@ -660,7 +660,7 @@ $kubectl get route -n cf-workloads 9fa832fa-4054-430f-9fc4-6d82733df836 -o json
 The Istio `VirtualService` is created by `RouteController` that watches the `Route CR`.
 
 ```json
-$kubectl get virtualservices -n cf-workloads vs-1f238ea5cba255ced517ca9036deab2c7a5f662f9ecd9b14c88e2130a929bdc4 -o json
+$ kubectl get virtualservices -n cf-workloads vs-1f238ea5cba255ced517ca9036deab2c7a5f662f9ecd9b14c88e2130a929bdc4 -o json
 
 {
     "apiVersion": "networking.istio.io/v1alpha3",
@@ -718,7 +718,7 @@ The owner of the virtual service is the `Route` with the name and uid of the new
 
 A new kubernetes `Service` has been created by `RouteController` according to the destination spec of the `Route CR` (backend app). If the `Route CR` defines two destinations, then two `Services` will be created. 
 ```json
-$kubectl get services s-746112e9-b9e5-43a8-b48f-457da74720c0 -n cf-workloads -o json
+$ kubectl get services s-746112e9-b9e5-43a8-b48f-457da74720c0 -n cf-workloads -o json
 {
     "apiVersion": "v1",
     "kind": "Service",
@@ -1125,7 +1125,7 @@ istio-proxy@go-app-test-2ab43bc022-0:/etc/istio/proxy$ cat tap_11344748775327413
 - tcpconnect: Traces tcp connections as they appear on a pod to help develop strict network policies
 - tcptracer: Traces into existing tcp connections, specifically connect, accept and close events.
 
-Unfortunately, we were unable to test Inspektor Gadget on cf4k8s, because it needs to install a privileged daemonset on all nodes which needs kernel source headers to work. This will work only if the node OS supports it, which for Kubernetes Gardener's `Garden Linux` requires [issue 76](https://github.com/gardenlinux/gardenlinux/issues/76) to be fixed.
+Unfortunately, we were unable to test Inspektor Gadget on cf-for-k8s, because it needs to install a privileged daemonset on all nodes which needs kernel source headers to work. This will work only if the node OS supports it, which for Kubernetes Gardener's `Garden Linux` requires [issue 76](https://github.com/gardenlinux/gardenlinux/issues/76) to be fixed.
 
 
 ### When to use which method of traffic debugging
