@@ -8,15 +8,16 @@
   - [Envoy Terminology](#envoy-terminology)
   - [CloudFoundry, Istio and Envoy Config Diffs](#cloudfoundry-istio-and-envoy-config-diffs)
     - [Push Single App](#push-single-app)
-      - [Changes on istio and cf-for-k8s components](#changes-on-istio-and-cf-for-k8s-components)
+      - [Changes on Istio and cf-for-k8s components](#changes-on-istio-and-cf-for-k8s-components)
       - [Changes in Ingress Envoy config](#changes-in-ingress-envoy-config)
-      - [Changes in Sidecar Envoy config](#changes-in-sidecar-envoy-config)
-      - [How traffic is forwarded from sidecar to app container](#how-traffic-is-forwarded-from-sidecar-to-app-container)
     - [How egress is forwarded from the app container](#how-egress-is-forwarded-from-the-app-container)
     - [Push Another App](#push-another-app)
     - [Map Additional Route](#map-additional-route)
       - [Changes on Istio and cf-for-k8s components](#changes-on-istio-and-cf-for-k8s-components-1)
       - [Changes in Envoy config](#changes-in-envoy-config)
+  - [Istio implementation details of Sidecar Envoy](#istio-implementation-details-of-sidecar-envoy)
+    - [Sidecar Envoy](#sidecar-envoy)
+    - [How traffic is forwarded from sidecar to app container](#how-traffic-is-forwarded-from-sidecar-to-app-container)
   - [Traffic restrictions](#traffic-restrictions)
     - [Egress](#egress)
   - [Debugging](#debugging)
@@ -39,7 +40,7 @@ This document shall be a living text that continuously evolves as cf-for-k8s dev
 
 
 ## Network Traffic
-The following diagram shows an overview of the network traffic at runtime. Ingress traffic is forwarded by the LoadBalancer to the IngressGateway which has discovered endpoint information about apps and services. The IngressGateway also holds certificates needed for (m)TLS connections to the client. Based on the L7 information of the (HTTP) request, the matching endpoint is selected and the request is forwarded to the sidecar Envoy of that endpoint. The sidecar eventually forwards the request to the app or service process on the local node.
+The following diagram shows an overview of the network traffic at runtime. Ingress traffic is forwarded by the LoadBalancer to the IngressGateway Envoy which has discovered endpoint information about apps and services. The IngressGateway Envoy also holds certificates needed for (m)TLS connections to the client. Based on the L7 information of the (HTTP) request, the matching endpoint is selected and the request is forwarded to the sidecar Envoy of that endpoint. The sidecar eventually forwards the request to the app or service process on the local node.
 
 ![](doc/PhysicalNetwork.png)
 
@@ -47,9 +48,9 @@ The following diagram shows an overview of the network traffic at runtime. Ingre
 | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Client | A client which would like to talk to the application.|
 | [LoadBalancer](https://kubernetes.io/docs/tasks/access-application-cluster/create-external-load-balancer/)                                                                              | Exposes the Service externally using a cloud provider’s load balancer.|
-| [IngressGateway](https://istio.io/docs/reference/config/networking/gateway/)                                                                                                                     | A part of Istio Traffic Management. The `IngressGateway` is responsible to route the network traffic to different locations like system services of applications. Istio is using [Envoy](https://www.envoyproxy.io/) for this purpose. Envoy is configured by istiod (since Istio 1.5).|
+| IngressGateway Envoy| They act as a central ingress for clients outside the Istio service mesh. From now on it will be called in this document Ingress Envoy.|
 | App | This is the application, which is deployed by the developer and used by the client. The inbound traffic is routed through the Envoy, which is running in a sidecar.
-| Sidecar Envoy | Every instance(replica) of an app has a sidecar Envoy, which runs in parallel with the app on the same pod and shares the network and storage (see more about the [Sidecar Pattern](https://www.magalix.com/blog/the-sidecar-pattern)). These Envoys monitors everything about the application.|
+| Sidecar Envoy | Every instance(replica) of an app has a Sidecar Envoy (see more about the [Sidecar Pattern](https://www.magalix.com/blog/the-sidecar-pattern)), which runs in parallel with the app. These Envoy intercept any network traffic (ingress and egress) of the application and apply some filters depending on the Istio configuration (e.g. routing, retries, circuit-breaking).|
 
 ## Envoy Terminology
 
@@ -63,7 +64,7 @@ Istio’s traffic management model relies on the Envoy proxies that are deployed
 | Listener |  Envoy module responsible for binding to an IP/port.|
 | Filter | Pluggable logic that allows traffic manipulation and routing decisions to upstream clusters.|
 | Route | Configuration to which cluster the traffic is forwarded.|
-| Cluster | Endpoints that requests are forwarded to by Envoy using load balancing. Don't confuse cluster with kubernetes cluster.|
+| Cluster | Endpoints that requests are forwarded to by Envoy using load balancing. Don't confuse cluster with Kubernetes cluster.|
 | Upstream host | An endpoint.|
 
 See also [Envoy terminology](https://www.envoyproxy.io/docs/envoy/latest/intro/life_of_a_request#terminology)
@@ -81,22 +82,22 @@ Finally, an additional route is mapped to existing app and the effects on CF, Is
 
 | Entity                                                                                                                                                                                         | Description                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
 | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Developer | The developer deploys the application to Cloud Foundry using `cf push`. During this action the Cloud Controller ensures that the application is built and deployed to kubernetes. Additionally the Cloud Controller creates a `Route CR`.|
+| Developer | The developer deploys the application to Cloud Foundry using `cf push`. During this action the Cloud Controller ensures that the application is built and deployed to Kubernetes. Additionally the Cloud Controller creates a `Route CR` (Route Custom Resource).|
 | [Cloud Controller](https://docs.cloudfoundry.org/concepts/architecture/cloud-controller.html)| The Cloud Controller in Cloud Foundry (CF) provides REST API endpoints for clients (developers) to access the system.|
-| [RouteController & Route CR](https://github.com/cloudfoundry/cf-k8s-networking#architecture) | The RouteController watches for updates to the `Route CR` (Route Custom Resource) and translates these into `Kubernetes Service` and `Istio VirtualService` objects.|
+| [RouteController & Route CR](https://github.com/cloudfoundry/cf-k8s-networking#architecture) | The RouteController watches for updates to the `Route CR` and translates these into `Kubernetes Service` and `Istio VirtualService` objects.|
 | [Eirini ](https://github.com/cloudfoundry-incubator/eirini#what-is-eirini)| Eirini enables pluggable scheduling for the Cloud Foundry Application Runtime. During `cf push` scenario it creates `StatefulSet`s to deploy the applications. |
 | [App Service](https://kubernetes.io/docs/concepts/services-networking/service/)  | Kubernetes service which is used by Istio to retrieve information about the location of the application pods.|
-| [Virtual Service for Applications](https://istio.io/docs/reference/config/networking/virtual-service/)| For each application a `VirtualService` is created. <br/>[An example configuration](examples/k8s-configs/app-virtualservice.yaml). <br/>This `VirtualService` is also responsible to add the required HTTP headers (e.g. `CF-App-Id`). Each `VirtualService` refers to a kubernetes service. [`DestinationRules`](https://istio.io/docs/concepts/traffic-management/#destination-rules) are also part of Istio traffic management. Using destination rules you can configure what happens to traffic for that destination (e.g. traffic policy).|
+| [Virtual Service for Applications](https://istio.io/docs/reference/config/networking/virtual-service/)| For each application a `VirtualService` is created. Each `VirtualService` refers to a Kubernetes service. [`DestinationRules`](https://istio.io/docs/concepts/traffic-management/#destination-rules) are also part of Istio traffic management. Using destination rules you can configure what happens to traffic for that destination (e.g. traffic policy).<br/>[An example configuration](examples/k8s-configs/app-virtualservice.yaml).|
 | [Pilot](https://istio.io/docs/ops/deployment/architecture/#pilot)                                                                                                                                | Pilot converts high level routing rules (e.g. `Gateways` or `VirtualServices`) that control traffic behavior into Envoy-specific configurations, and propagates them to the Ingress and Sidecar Envoys at runtime. Since Istio 1.5 [istiod](https://istio.io/latest/docs/ops/deployment/architecture/#istiod) takes over this task.|
-| App | This is the application, which is deployed by the developer and used by the client. The inbound traffic is routed through the Envoy, which is running in a sidecar.
-| Sidecar Envoy | Every instance(replica) of an app has a sidecar Envoy, which runs in parallel with the app. These Envoys monitors everything about the application.|
-| Ingress-Gateway Envoy | Configures ingress network traffic  |
+| App | See (above)[https://github.com/akhinos/cf4k8s-networking#network-traffic].|
+| Sidecar Envoy | See (above)[https://github.com/akhinos/cf4k8s-networking#network-traffic].|
+| Ingress Envoy | See (above)[https://github.com/akhinos/cf4k8s-networking#network-traffic].|
 
 
 
 ### Push Single App
 
-#### Changes on istio and cf-for-k8s components
+#### Changes on Istio and cf-for-k8s components
 
 1. A new CR of kind `Route` gets created. The spec contains the new route information:
 
@@ -222,7 +223,7 @@ $ istioctl proxy-config routes istio-ingressgateway-76jht.istio-system -o json
                 ]
               },
 ```
-3. A new cluster entry is added to the ingress envoy config (Don't confuse cluster with kubernetes cluster - it's an Envoy backend).
+3. A new cluster entry is added to the ingress envoy config (Don't confuse cluster with Kubernetes cluster - it's an Envoy backend).
    The cluster entry contains info needed for the Ingress Envoy to open a TLS session with the app Sidecar Envoy. 
 
 ```json
@@ -299,188 +300,6 @@ It has a reference to the k8s service `s-ef9c974d-adfd-4552-8fcd-19e17f84d8dc`. 
 Envoy's EDS ([Endpoint Discovery Service](https://www.envoyproxy.io/docs/envoy/latest/intro/arch_overview/upstream/service_discovery#endpoint-discovery-service-eds)) returns the list of endpoints (IP:port and in future labels) associated with a real k8s service.
 
 4. As the listeners for port 80 and port 443 are existing, no changes for listeners.
-
-#### Changes in Sidecar Envoy config
-
-1. When the sidecar gets injected, iptables rules are added that will capture all inbound traffic and forward it to 0.0.0.0:15006
-2. Another rule captures all outbound traffic and forwards it to 0.0.0.0:15001
-3. Envoy is started with uid and gid 1337 and an iptables rule is established that skips traffic capture for that user. This way an endless loop
-is prevented.
-
-```bash
--A PREROUTING -p tcp -j ISTIO_INBOUND                             # Capture all inbound traffic to istio_inbound chain
--A OUTPUT -p tcp -j ISTIO_OUTPUT                                  # Capture all outbound traffic to istio_outbound chain
--A ISTIO_INBOUND -p tcp -m tcp --dport 22 -j RETURN               # Envoy does not capture SSH connections
--A ISTIO_INBOUND -p tcp -m tcp --dport 15020 -j RETURN            # Exception for prometheus telemetry
--A ISTIO_INBOUND -p tcp -j ISTIO_IN_REDIRECT                      # All other inbound traffic gets redirected to envoy
--A ISTIO_IN_REDIRECT -p tcp -j REDIRECT --to-ports 15006          # Envoy receives incoming traffic on port 15006
--A ISTIO_OUTPUT -s 127.0.0.6/32 -o lo -j RETURN                   # Don't capture from 6 is the magical number for inbound: 15006, 127.0.0.6, ::6
--A ISTIO_OUTPUT ! -d 127.0.0.1/32 -o lo -j ISTIO_IN_REDIRECT      # But do capture non-local outbound connections from loopback
--A ISTIO_OUTPUT -m owner --uid-owner 1337 -j RETURN               # Exception for envoy itself...
--A ISTIO_OUTPUT -m owner --gid-owner 1337 -j RETURN               # ... this will prevent envoy from capturing its own traffic
--A ISTIO_OUTPUT -d 127.0.0.1/32 -j RETURN                         # Don't capture connections to localhost (RETURN = leave chain)
--A ISTIO_OUTPUT -j ISTIO_REDIRECT                                 # All other outbound traffic gets redirected to envoy
--A ISTIO_REDIRECT -p tcp -j REDIRECT --to-ports 15001             # Envoy receives outgoing traffic on port 15001
-```
-
-1. When a new kubernetes service is added (i.e. cluster ip for CF app), no changes are made to Envoy config by default.
-1. The started sidecar Envoy gets pre-configured listeners as described below.
-
-See https://istio.io/docs/ops/deployment/requirements/#ports-used-by-istio for list of special envoy ports.
-Use https://istio.io/latest/docs/ops/diagnostic-tools/proxy-cmd/ for actual debugging advice.
-
-A virtual listener on 0.0.0.0 per each HTTP port for outbound HTTP traffic (e.g. configured via VirtualService).
-A virtual listener per service IP, per each non-HTTP for outbound TCP/HTTPS traffic.
-E.g., in the table below, there are two entries for port `8080`. In order to distinguish HTTP and non-HTTP traffic, there is an additional virtual listener with the IP `10.68.227.69` in place.
-
-```bash
-$ istioctl proxy-config listener  test-app-a-test-eb94aee321-0.cf-workloads
-ADDRESS          PORT      TYPE
-0.0.0.0          15001     TCP    # outbound envoy port
-0.0.0.0          15006     TCP    # inbound envoy port
-10.68.227.69     8080      TCP    # Outbound HTTPS/TCP traffic to metric-proxy.cf-system service
-10.66.218.25     8085      TCP    # Outbound HTTPS/TCP traffic to eirini.cf-system service
-10.68.94.164     24224     TCP    # Outbound HTTPS/TCP traffic to fluentd-forwarder-ingress.cf-system service
-10.66.80.251     8082      TCP    # Outbound HTTPS/TCP traffic to log-cache-syslog.cf-system service
-0.0.0.0          8080      TCP    # Outbound HTTP traffic to uaa.cf-system
-0.0.0.0          80        TCP    # Outbound HTTP traffic to capi.cf-system and cfroutesync.cf-system
-0.0.0.0          8083      TCP    # Outbound HTTP traffic to log-cache.cf-system service. Check below for detailed config
-0.0.0.0          15090     HTTP   # Envoy Prometheus telemetry
-10.96.4.62       15020     TCP    # deprecated (https://github.com/istio/istio/issues/24147)
-10.96.4.62       8080      HTTP   # deprecated (https://github.com/istio/istio/issues/24147)
-```
-
-> **CAVEAT**: The additional listeners besides outbound and inbound Envoy capture ports are obsolete and will not be used for routing. They will be removed in Istio 1.6. See [this issue](https://github.com/istio/istio/issues/24147) for details.
-
-> **NOTE:** For a deep-dive into how the sidecar pattern works in istio, check out [Jimmy Song's blog post](https://jimmysong.io/en/blog/sidecar-injection-iptables-and-traffic-routing/) which also features a great [routing workflow diagram](https://jimmysong.io/en/blog/sidecar-injection-iptables-and-traffic-routing/envoy-sidecar-traffic-interception-jimmysong-blog-en.png) that shows exactly how the traffic is routed.
-
-#### How traffic is forwarded from sidecar to app container
-
-The `istio-init` initContainer configures IP tables in such a way that all incoming traffic is routed to port 15006. Then, there is a listener on port 15006 which has a listener filter `envoy.listener.original_dst` which restores the original destination address before filter chains apply. Then there is a list of filter chains which match in order of most to least specific destination, i.e. `100.96.4.29/32` is more specific than `0.0.0.0/0` so the higher prefix length wins.
-
-```yaml
-$ istioctl proxy-config listener test-app-a-test-eb94aee321-0.cf-workloads --port 15006 -o yaml
-
-        {
-          "listener": {
-            "address": {
-              "socket_address": {
-                "address": "0.0.0.0",
-                "port_value": 15006       # all inbound traffic gets forwarded here
-              }
-            },
-            "continue_on_listener_filters_timeout": true,
-            "filter_chains": [
-              {
-                "filter_chain_match": {
-                  "prefix_ranges": [
-                    {
-                      "address_prefix": "0.0.0.0",
-                      "prefix_len": 0
-                    }
-                  ]
-                },
-                "filters": [
-                  {
-                    "name": "envoy.tcp_proxy",
-                    "typed_config": {
-                      "@type": "type.googleapis.com/envoy.config.filter.network.tcp_proxy.v2.TcpProxy",
-                      "access_log": [ (...) ],
-                      "cluster": "InboundPassthroughClusterIpv4",
-                      "stat_prefix": "InboundPassthroughClusterIpv4"
-                    }
-                  }
-                ],
-                (...)
-              },
-              { # (other filter chains here)
-               (...)
-              },
-              {
-                "filter_chain_match": {
-                  "destination_port": 8080,
-                  "prefix_ranges": [
-                    {
-                      "address_prefix": "100.96.4.29",    # this matches the app's pod ip and app port 8080
-                      "prefix_len": 32
-                    }
-                  ]
-                },
-                "filters": [
-                  {
-                    "name": "envoy.http_connection_manager",
-                    "typed_config": {
-                      "@type": "type.googleapis.com/envoy.config.filter.network.http_connection_manager.v2.HttpConnectionManager",
-                      "access_log": [ (...) ],
-                      "forward_client_cert_details": "APPEND_FORWARD",
-                      "generate_request_id": true,
-                      "http_filters": [ (...) ],
-                      "normalize_path": true,
-                      "route_config": {
-                        "name": "inbound|8080|http|s-7afcae7d-d2ff-4310-9e74-2ec9ca4cca19.cf-workloads.svc.cluster.local",
-                        "validate_clusters": false,
-                        "virtual_hosts": [
-                          {
-                            "domains": [
-                              "*"
-                            ],
-                            "name": "inbound|http|8080",
-                            "routes": [
-                              {
-                                "decorator": {
-                                  "operation": "s-7afcae7d-d2ff-4310-9e74-2ec9ca4cca19.cf-workloads.svc.cluster.local:8080/*"
-                                },
-                                "match": {
-                                  "prefix": "/"
-                                },
-                                "name": "default",
-                                "route": {    # this route selects the cluster backend for inbound app traffic
-                                  "cluster": "inbound|8080|http|s-7afcae7d-d2ff-4310-9e74-2ec9ca4cca19.cf-workloads.svc.cluster.local",
-                                  "max_grpc_timeout": "0s",
-                                  "timeout": "0s"
-                                },
-                                "typed_per_filter_config": { ... }
-
-(...)
-              "listener_filters": [
-              {
-                "name": "envoy.listener.original_dst"     # this restores original destination before filter chains are run
-              },
-              {
-                "name": "envoy.listener.tls_inspector"
-              }
-            ],
-            "listener_filters_timeout": "1s",
-            "name": "virtualInbound"
-          },
-
-```
-Since incoming traffic has our podIP `100.96.4.29` as dstIP and dstPort `8080` the first and the last filter chain match and the last filter chain wins, because it matches the port. This filter chain has a matching virtualHost `inbound|http|8080` (domain `*` matches all) and therefore the packet is using route `default` to cluster `inbound|8080|http|s-ef9c974d-adfd-4552-8fcd-19e17f84d8dc.cf-workloads.svc.cluster.local`.
-
-
-```json
-$ istioctl proxy-config cluster test-app-a-test-eb94aee321-0.cf-workloads --fqdn "inbound|8080|http|s-ef9c974d-adfd-4552-8fcd-19e17f84d8dc.cf-workloads.svc.cluster.local" -o json
-
-[
-    {
-        "name": "inbound|8080|http|s-ef9c974d-adfd-4552-8fcd-19e17f84d8dc.cf-workloads.svc.cluster.local",
-        "type": "STATIC",
-        "loadAssignment": {
-            "clusterName": "inbound|8080|http|s-ef9c974d-adfd-4552-8fcd-19e17f84d8dc.cf-workloads.svc.cluster.local",
-            "endpoints": [
-                {
-                    "lbEndpoints": [
-                        {
-                            "endpoint": {
-                                "address": {
-                                    "socketAddress": {
-                                        "address": "127.0.0.1",
-                                        "portValue": 8080
-      (...)
-```
-This cluster has one static endpoint configured and that is localhost:8080, which is where our application is listening.
-
-
 
 ### How egress is forwarded from the app container
 
@@ -719,7 +538,7 @@ $ kubectl get virtualservices -n cf-workloads vs-1f238ea5cba255ced517ca9036deab2
 ```
 The owner of the virtual service is the `Route` with the name and uid of the newly created `Route CR`.
 
-A new kubernetes `Service` has been created by `RouteController` according to the destination spec of the `Route CR` (backend app). If the `Route CR` defines two destinations, then two `Services` will be created. 
+A new Kubernetes `Service` has been created by `RouteController` according to the destination spec of the `Route CR` (backend app). If the `Route CR` defines two destinations, then two `Services` will be created. 
 ```json
 $ kubectl get services s-746112e9-b9e5-43a8-b48f-457da74720c0 -n cf-workloads -o json
 {
@@ -764,7 +583,187 @@ $ kubectl get services s-746112e9-b9e5-43a8-b48f-457da74720c0 -n cf-workloads -o
 The owner of the service is the `Route` with the name and uid of the newly created `Route CR`.
 
 #### Changes in Envoy config
-As the app is available via ports 443 and 80, two route entries are added so that the ingress envoy knows how a host name is mapped to a service name.  A new cluster entry is added to the ingress envoy config. No changes in the listener config.  
+As the app is available via ports 443 and 80, two route entries are added so that the ingress envoy knows how a host name is mapped to a service name.  A new cluster entry is added to the ingress envoy config. No changes in the listener config.
+
+## Istio implementation details of Sidecar Envoy
+
+This section provides more technical details about the Sidecar Envoy and its communication with the app. 
+
+### Sidecar Envoy
+
+After a new app has been pushed, the sidecar gets injected. The initContainer configures IPtables for the Sidecar Envoy in such a way that all incoming traffic is routed to port 15006 and all outbound traffic to 15001. The Sidecar Envoy is started with uid and gid 1337 and an IPtables rule is established that skips traffic capture for that user. This way an endless loop is prevented.
+
+```bash
+-A PREROUTING -p tcp -j ISTIO_INBOUND                             # Capture all inbound traffic to istio_inbound chain
+-A OUTPUT -p tcp -j ISTIO_OUTPUT                                  # Capture all outbound traffic to istio_outbound chain
+-A ISTIO_INBOUND -p tcp -m tcp --dport 22 -j RETURN               # Envoy does not capture SSH connections
+-A ISTIO_INBOUND -p tcp -m tcp --dport 15020 -j RETURN            # Exception for prometheus telemetry
+-A ISTIO_INBOUND -p tcp -j ISTIO_IN_REDIRECT                      # All other inbound traffic gets redirected to envoy
+-A ISTIO_IN_REDIRECT -p tcp -j REDIRECT --to-ports 15006          # Envoy receives incoming traffic on port 15006
+-A ISTIO_OUTPUT -s 127.0.0.6/32 -o lo -j RETURN                   # Don't capture from 6 is the magical number for inbound: 15006, 127.0.0.6, ::6
+-A ISTIO_OUTPUT ! -d 127.0.0.1/32 -o lo -j ISTIO_IN_REDIRECT      # But do capture non-local outbound connections from loopback
+-A ISTIO_OUTPUT -m owner --uid-owner 1337 -j RETURN               # Exception for envoy itself...
+-A ISTIO_OUTPUT -m owner --gid-owner 1337 -j RETURN               # ... this will prevent envoy from capturing its own traffic
+-A ISTIO_OUTPUT -d 127.0.0.1/32 -j RETURN                         # Don't capture connections to localhost (RETURN = leave chain)
+-A ISTIO_OUTPUT -j ISTIO_REDIRECT                                 # All other outbound traffic gets redirected to envoy
+-A ISTIO_REDIRECT -p tcp -j REDIRECT --to-ports 15001             # Envoy receives outgoing traffic on port 15001
+```
+
+When a new Kubernetes service is added (i.e. cluster ip for CF app), no changes are made to Envoy config by default, but the started Sidecar Envoy gets pre-configured listeners as described below.
+
+See https://istio.io/docs/ops/deployment/requirements/#ports-used-by-istio for list of special Envoy ports.
+Use https://istio.io/latest/docs/ops/diagnostic-tools/proxy-cmd/ for actual debugging advice.
+
+A virtual listener on 0.0.0.0 per each HTTP port for outbound HTTP traffic (e.g. configured via VirtualService).
+A virtual listener per service IP, per each non-HTTP for outbound TCP/HTTPS traffic.
+E.g., in the table below, there are two entries for port `8080`. In order to distinguish HTTP and non-HTTP traffic, there is an additional virtual listener with the IP `10.68.227.69` in place.
+
+```bash
+$ istioctl proxy-config listener  test-app-a-test-eb94aee321-0.cf-workloads
+ADDRESS          PORT      TYPE
+0.0.0.0          15001     TCP    # outbound envoy port
+0.0.0.0          15006     TCP    # inbound envoy port
+10.68.227.69     8080      TCP    # Outbound HTTPS/TCP traffic to metric-proxy.cf-system service
+10.66.218.25     8085      TCP    # Outbound HTTPS/TCP traffic to eirini.cf-system service
+10.68.94.164     24224     TCP    # Outbound HTTPS/TCP traffic to fluentd-forwarder-ingress.cf-system service
+10.66.80.251     8082      TCP    # Outbound HTTPS/TCP traffic to log-cache-syslog.cf-system service
+0.0.0.0          8080      TCP    # Outbound HTTP traffic to uaa.cf-system
+0.0.0.0          80        TCP    # Outbound HTTP traffic to capi.cf-system and cfroutesync.cf-system
+0.0.0.0          8083      TCP    # Outbound HTTP traffic to log-cache.cf-system service. Check below for detailed config
+0.0.0.0          15090     HTTP   # Envoy Prometheus telemetry
+10.96.4.62       15020     TCP    # deprecated (https://github.com/istio/istio/issues/24147)
+10.96.4.62       8080      HTTP   # deprecated (https://github.com/istio/istio/issues/24147)
+```
+
+> **CAVEAT**: The additional listeners besides outbound and inbound Envoy capture ports are obsolete and will not be used for routing. They will be removed in Istio 1.6. See [this issue](https://github.com/istio/istio/issues/24147) for details.
+
+> **NOTE:** For a deep-dive into how the Sidecar Pattern works in Istio, check out [Jimmy Song's blog post](https://jimmysong.io/en/blog/sidecar-injection-iptables-and-traffic-routing/) which also features a great [routing workflow diagram](https://jimmysong.io/en/blog/sidecar-injection-iptables-and-traffic-routing/envoy-sidecar-traffic-interception-jimmysong-blog-en.png) that shows exactly how the traffic is routed.
+
+### How traffic is forwarded from sidecar to app container
+
+For the incoming traffic there is a listener on port 15006 which has a listener filter `envoy.listener.original_dst` which restores the original destination address before filter chains apply. Then there is a list of filter chains which match in order of most to least specific destination, i.e. `100.96.4.29/32` is more specific than `0.0.0.0/0` so the higher prefix length wins.
+
+```yaml
+$ istioctl proxy-config listener test-app-a-test-eb94aee321-0.cf-workloads --port 15006 -o yaml
+
+        {
+          "listener": {
+            "address": {
+              "socket_address": {
+                "address": "0.0.0.0",
+                "port_value": 15006       # all inbound traffic gets forwarded here
+              }
+            },
+            "continue_on_listener_filters_timeout": true,
+            "filter_chains": [
+              {
+                "filter_chain_match": {
+                  "prefix_ranges": [
+                    {
+                      "address_prefix": "0.0.0.0",
+                      "prefix_len": 0
+                    }
+                  ]
+                },
+                "filters": [
+                  {
+                    "name": "envoy.tcp_proxy",
+                    "typed_config": {
+                      "@type": "type.googleapis.com/envoy.config.filter.network.tcp_proxy.v2.TcpProxy",
+                      "access_log": [ (...) ],
+                      "cluster": "InboundPassthroughClusterIpv4",
+                      "stat_prefix": "InboundPassthroughClusterIpv4"
+                    }
+                  }
+                ],
+                (...)
+              },
+              { # (other filter chains here)
+               (...)
+              },
+              {
+                "filter_chain_match": {
+                  "destination_port": 8080,
+                  "prefix_ranges": [
+                    {
+                      "address_prefix": "100.96.4.29",    # this matches the app's pod ip and app port 8080
+                      "prefix_len": 32
+                    }
+                  ]
+                },
+                "filters": [
+                  {
+                    "name": "envoy.http_connection_manager",
+                    "typed_config": {
+                      "@type": "type.googleapis.com/envoy.config.filter.network.http_connection_manager.v2.HttpConnectionManager",
+                      "access_log": [ (...) ],
+                      "forward_client_cert_details": "APPEND_FORWARD",
+                      "generate_request_id": true,
+                      "http_filters": [ (...) ],
+                      "normalize_path": true,
+                      "route_config": {
+                        "name": "inbound|8080|http|s-7afcae7d-d2ff-4310-9e74-2ec9ca4cca19.cf-workloads.svc.cluster.local",
+                        "validate_clusters": false,
+                        "virtual_hosts": [
+                          {
+                            "domains": [
+                              "*"
+                            ],
+                            "name": "inbound|http|8080",
+                            "routes": [
+                              {
+                                "decorator": {
+                                  "operation": "s-7afcae7d-d2ff-4310-9e74-2ec9ca4cca19.cf-workloads.svc.cluster.local:8080/*"
+                                },
+                                "match": {
+                                  "prefix": "/"
+                                },
+                                "name": "default",
+                                "route": {    # this route selects the cluster backend for inbound app traffic
+                                  "cluster": "inbound|8080|http|s-7afcae7d-d2ff-4310-9e74-2ec9ca4cca19.cf-workloads.svc.cluster.local",
+                                  "max_grpc_timeout": "0s",
+                                  "timeout": "0s"
+                                },
+                                "typed_per_filter_config": { ... }
+
+(...)
+              "listener_filters": [
+              {
+                "name": "envoy.listener.original_dst"     # this restores original destination before filter chains are run
+              },
+              {
+                "name": "envoy.listener.tls_inspector"
+              }
+            ],
+            "listener_filters_timeout": "1s",
+            "name": "virtualInbound"
+          },
+
+```
+Since incoming traffic has our podIP `100.96.4.29` as dstIP and dstPort `8080` the first and the last filter chain match and the last filter chain wins, because it matches the port. This filter chain has a matching virtualHost `inbound|http|8080` (domain `*` matches all) and therefore the packet is using route `default` to cluster `inbound|8080|http|s-ef9c974d-adfd-4552-8fcd-19e17f84d8dc.cf-workloads.svc.cluster.local`.
+
+
+```json
+$ istioctl proxy-config cluster test-app-a-test-eb94aee321-0.cf-workloads --fqdn "inbound|8080|http|s-ef9c974d-adfd-4552-8fcd-19e17f84d8dc.cf-workloads.svc.cluster.local" -o json
+
+[
+    {
+        "name": "inbound|8080|http|s-ef9c974d-adfd-4552-8fcd-19e17f84d8dc.cf-workloads.svc.cluster.local",
+        "type": "STATIC",
+        "loadAssignment": {
+            "clusterName": "inbound|8080|http|s-ef9c974d-adfd-4552-8fcd-19e17f84d8dc.cf-workloads.svc.cluster.local",
+            "endpoints": [
+                {
+                    "lbEndpoints": [
+                        {
+                            "endpoint": {
+                                "address": {
+                                    "socketAddress": {
+                                        "address": "127.0.0.1",
+                                        "portValue": 8080
+      (...)
+```
+This cluster has one static endpoint configured and that is localhost:8080, which is where our application is listening.
 
 ## Traffic restrictions
 
@@ -1123,7 +1122,7 @@ istio-proxy@go-app-test-2ab43bc022-0:/etc/istio/proxy$ cat tap_11344748775327413
 
 **Inspektor Gadget**
 
-[Inspektor Gadget](https://github.com/kinvolk/inspektor-gadget) is a collection of K8S tools developed by [Kinvolk](https://kinvolk.io/) to help ease the development of kubernetes workloads. Inspektor Gadget provides a kubectl plugin that has 3 network-related debugging features:
+[Inspektor Gadget](https://github.com/kinvolk/inspektor-gadget) is a collection of K8S tools developed by [Kinvolk](https://kinvolk.io/) to help ease the development of Kubernetes workloads. Inspektor Gadget provides a kubectl plugin that has 3 network-related debugging features:
 - tcptop: Shows network connections on a pod, similar to tools like `netstat` or `ss`
 - tcpconnect: Traces tcp connections as they appear on a pod to help develop strict network policies
 - tcptracer: Traces into existing tcp connections, specifically connect, accept and close events.
