@@ -84,13 +84,13 @@ Finally, an additional route is mapped to existing app and the effects on CF, Is
 | Developer | The developer deploys the application to Cloud Foundry using `cf push`. During this action the Cloud Controller ensures that the application is built and deployed to kubernetes. Additionally the Cloud Controller creates a `Route CR`.|
 | [Cloud Controller](https://docs.cloudfoundry.org/concepts/architecture/cloud-controller.html)| The Cloud Controller in Cloud Foundry (CF) provides REST API endpoints for clients (developers) to access the system.|
 | [RouteController & Route CR](https://github.com/cloudfoundry/cf-k8s-networking#architecture) | The RouteController watches for updates to the `Route CR` (Route Custom Resource) and translates these into `Kubernetes Service` and `Istio VirtualService` objects.|
-| [Eirini ](https://github.com/cloudfoundry-incubator/eirini#what-is-eirini)|  Eirini enables pluggable scheduling for the Cloud Foundry Application Runtime. During `cf push` scenario it creates `StatefulSet`s to deploy the applications. |
+| [Eirini ](https://github.com/cloudfoundry-incubator/eirini#what-is-eirini)| Eirini enables pluggable scheduling for the Cloud Foundry Application Runtime. During `cf push` scenario it creates `StatefulSet`s to deploy the applications. |
 | [App Service](https://kubernetes.io/docs/concepts/services-networking/service/)  | Kubernetes service which is used by Istio to retrieve information about the location of the application pods.|
 | [Virtual Service for Applications](https://istio.io/docs/reference/config/networking/virtual-service/)| For each application a `VirtualService` is created. <br/>[An example configuration](examples/k8s-configs/app-virtualservice.yaml). <br/>This `VirtualService` is also responsible to add the required HTTP headers (e.g. `CF-App-Id`). Each `VirtualService` refers to a kubernetes service. [`DestinationRules`](https://istio.io/docs/concepts/traffic-management/#destination-rules) are also part of Istio traffic management. Using destination rules you can configure what happens to traffic for that destination (e.g. traffic policy).|
-| [Pilot](https://istio.io/docs/ops/deployment/architecture/#pilot)                                                                                                                                | Pilot converts high level routing rules (e.g. `Gateways` or `VirtualServices`) that control traffic behavior into Envoy-specific configurations, and propagates them to the sidecar envoys at runtime. Since Istio 1.5 [istiod](https://istio.io/latest/docs/ops/deployment/architecture/#istiod) takes over this task.|
+| [Pilot](https://istio.io/docs/ops/deployment/architecture/#pilot)                                                                                                                                | Pilot converts high level routing rules (e.g. `Gateways` or `VirtualServices`) that control traffic behavior into Envoy-specific configurations, and propagates them to the Ingress and Sidecar Envoys at runtime. Since Istio 1.5 [istiod](https://istio.io/latest/docs/ops/deployment/architecture/#istiod) takes over this task.|
 | App | This is the application, which is deployed by the developer and used by the client. The inbound traffic is routed through the Envoy, which is running in a sidecar.
 | Sidecar Envoy | Every instance(replica) of an app has a sidecar Envoy, which runs in parallel with the app. These Envoys monitors everything about the application.|
-| [IngressGateway](https://istio.io/docs/reference/config/networking/gateway/)                                                                                                                     | The `IngressGateway` is responsible to route the network traffic to different locations like system services of applications. The `IngressGateway` is implemented as [`DaemonSet`](https://istio.io/docs/reference/config/networking/gateway/). A `DaemonSet` ensures that all Nodes run a copy of this gateway.<br/>[An example configuration](examples/k8s-configs/istio-ingressgateway.yaml)  |
+| Ingress-Gateway Envoy | Configures ingress network traffic  |
 
 
 
@@ -157,7 +157,7 @@ The Istio documentation contains information on how-to retrieve the current conf
 2. A route entry is added so that the Ingress Envoy knows how a host name is mapped to a service name.
    Request headers are added that will be forwarded to the cf app. The route has a reference to the cluster.
 
-   > **NOTE**: Use `podname.namespace` to find the cluster config. User `kubectl get pods -n istio-system` to find the matching pod name.
+   > **NOTE**: Use `istioctl proxy-config routes podname.namespace` to find the route config. User `kubectl get pods -n istio-system` to find the matching pod name.
 
 ```json
 $ istioctl proxy-config routes istio-ingressgateway-76jht.istio-system -o json
@@ -323,11 +323,11 @@ is prevented.
 -A ISTIO_REDIRECT -p tcp -j REDIRECT --to-ports 15001             # Envoy receives outgoing traffic on port 15001
 ```
 
-1. When a new kubernetes service is added (i.e. cluster ip for CF app), no changes are made to envoy config by default.
-1. The started sidecar envoy gets pre-configured listeners as described below.
+1. When a new kubernetes service is added (i.e. cluster ip for CF app), no changes are made to Envoy config by default.
+1. The started sidecar Envoy gets pre-configured listeners as described below.
 
 See https://istio.io/docs/ops/deployment/requirements/#ports-used-by-istio for list of special envoy ports.
-Use https://archive.istio.io/v1.4/docs/ops/diagnostic-tools/proxy-cmd/ for actual debugging advice.
+Use https://istio.io/latest/docs/ops/diagnostic-tools/proxy-cmd/ for actual debugging advice.
 
 A virtual listener on 0.0.0.0 per each HTTP port for outbound HTTP traffic (e.g. configured via VirtualService).
 A virtual listener per service IP, per each non-HTTP for outbound TCP/HTTPS traffic.
