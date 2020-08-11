@@ -89,9 +89,9 @@ Finally, an additional route is mapped to existing app and the effects on CF, Is
 | [App Service](https://kubernetes.io/docs/concepts/services-networking/service/)  | Kubernetes service which is used by Istio to retrieve information about the location of the application pods.|
 | [Virtual Service for Applications](https://istio.io/docs/reference/config/networking/virtual-service/)| For each application a `VirtualService` is created. Each `VirtualService` refers to a Kubernetes service. [`DestinationRules`](https://istio.io/docs/concepts/traffic-management/#destination-rules) are also part of Istio traffic management. Using destination rules you can configure what happens to traffic for that destination (e.g. traffic policy).<br/>[An example configuration](examples/k8s-configs/app-virtualservice.yaml).|
 | [Pilot](https://istio.io/docs/ops/deployment/architecture/#pilot)                                                                                                                                | Pilot converts high level routing rules (e.g. `Gateways` or `VirtualServices`) that control traffic behavior into Envoy-specific configurations, and propagates them to the Ingress and Sidecar Envoys at runtime. Since Istio 1.5 [istiod](https://istio.io/latest/docs/ops/deployment/architecture/#istiod) takes over this task.|
-| App | See (above)[https://github.com/akhinos/cf4k8s-networking#network-traffic].|
-| Sidecar Envoy | See (above)[https://github.com/akhinos/cf4k8s-networking#network-traffic].|
-| Ingress Envoy | See (above)[https://github.com/akhinos/cf4k8s-networking#network-traffic].|
+| App | See [above](https://github.com/akhinos/cf4k8s-networking#network-traffic).|
+| Sidecar Envoy | See [above](https://github.com/akhinos/cf4k8s-networking#network-traffic).|
+| Ingress Envoy | See [above](https://github.com/akhinos/cf4k8s-networking#network-traffic).|
 
 
 
@@ -619,7 +619,7 @@ A virtual listener per service IP, per each non-HTTP for outbound TCP/HTTPS traf
 E.g., in the table below, there are two entries for port `8080`. In order to distinguish HTTP and non-HTTP traffic, there is an additional virtual listener with the IP `10.68.227.69` in place.
 
 ```bash
-$ istioctl proxy-config listener  test-app-a-test-eb94aee321-0.cf-workloads
+$ istioctl proxy-config listener test-app-a-test-eb94aee321-0.cf-workloads
 ADDRESS          PORT      TYPE
 0.0.0.0          15001     TCP    # outbound envoy port
 0.0.0.0          15006     TCP    # inbound envoy port
