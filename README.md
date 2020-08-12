@@ -14,10 +14,10 @@
     - [Map Additional Route](#map-additional-route)
       - [Changes on Istio and cf-for-k8s components](#changes-on-istio-and-cf-for-k8s-components-1)
       - [Changes in Envoy config](#changes-in-envoy-config)
-    - [How egress is forwarded from the app container](#how-egress-is-forwarded-from-the-app-container)
   - [Istio implementation details of Sidecar Envoy](#istio-implementation-details-of-sidecar-envoy)
     - [Sidecar Envoy](#sidecar-envoy)
     - [How traffic is forwarded from sidecar to app container](#how-traffic-is-forwarded-from-sidecar-to-app-container)
+    - [How egress is forwarded from the app container](#how-egress-is-forwarded-from-the-app-container)
   - [Traffic restrictions](#traffic-restrictions)
     - [Egress](#egress)
   - [Debugging](#debugging)
@@ -300,8 +300,8 @@ $ istioctl proxy-config cluster istio-ingressgateway-76jht.istio-system --fqdn c
   "type": "EDS"
 }
 ```
-    It has a reference to the k8s service `s-ef9c974d-adfd-4552-8fcd-19e17f84d8dc`. It is of type "EDS" which means that at runtime
-    Envoy's EDS ([Endpoint Discovery Service](https://www.envoyproxy.io/docs/envoy/latest/intro/arch_overview/upstream/service_discovery#endpoint-discovery-service-eds)) returns the list of endpoints (IP:port and in future labels) associated with a real Kubernetes service.
+  It has a reference to the k8s service `s-ef9c974d-adfd-4552-8fcd-19e17f84d8dc`. It is of type "EDS" which means that at runtime
+  Envoy's EDS ([Endpoint Discovery Service](https://www.envoyproxy.io/docs/envoy/latest/intro/arch_overview/upstream/service_discovery#endpoint-discovery-service-eds)) returns the list of endpoints (IP:port and in future labels) associated with a real Kubernetes service.
 
 4. As the listeners for port 80 and port 443 are existing, no changes for listeners.
 
@@ -480,114 +480,7 @@ $ kubectl get services s-746112e9-b9e5-43a8-b48f-457da74720c0 -n cf-workloads -o
 The owner of the service is the `Route` with the name and uid of the newly created `Route CR`.
 
 #### Changes in Envoy config
-As the app is available via ports 443 and 80, two route entries are added so that the ingress envoy knows how a host name is mapped to a service name.  A new cluster entry is added to the ingress envoy config. No changes in the listener config.
-
-### How egress is forwarded from the app container
-
-In contrast to bosh-deployed CF, there is no NAT gateway in cf-for-k8s. Instead, Kubernetes handles NAT. E.g., [Gardener](https://gardener.cloud/)-managed Kubernetes clusters have private NodeIPs and create NAT gateways to perform address translation. How these gateways are implemented depends on the respective infrastructure provider, e.g. the [`Cloud NAT Gateway`](https://cloud.google.com/nat/docs/overview) on GCP is purely software-defined. Since there is no Istio egress-gateway in cf-for-k8s as well, egress traffic from an app is routed through the sidecar and then to its destination outside the cluster using the infrastructure-specific NAT solution.
-
-The `istio-init` initContainer configures IP tables in such a way that all outgoing traffic is routed to port `15001`. There is a listener on this port that has `useOriginalDst` set to true which means it hands the request over to the listener that best matches the original destination of the request. If it can’t find any matching virtual listeners it sends the request to the `PassthroughCluster` which connects to the destination directly. For any address, where there is no special Istio config, e.g. for google.com:443, the `PassthroughCluster` is used.
-
-```json
-$ istioctl proxy-config listener test-app-a-test-eb94aee321-0.cf-workloads --port 15001 -o json
-
-[
-    {
-        "name": "virtualOutbound",
-        "address": {
-            "socketAddress": {
-                "address": "0.0.0.0",
-                "portValue": 15001
-            }
-        },
-        "useOriginalDst": true
-    }
-]
-```
-
-There is a virtual listener on 0.0.0.0 per each HTTP port for outbound HTTP traffic. We follow the packet sent to the log-cache-service via `curl log-cache.cf-system:8083/test`.
-
-```json
-istioctl proxy-config listener test-app-a-test-eb94aee321-0.cf-workloads --port 8083 -o json
-
-(...)
-"filters": [
-      {
-          "name": "envoy.http_connection_manager",
-          "typedConfig": {
-              "rds": {
-                  "configSource": {
-                      "ads": {}
-                  },
-                  "routeConfigName": "8083"
-              },
-(...)
-```
-The filter above belongs to the matching listener. `rds` means Route Discovery Service which looks for a route config with name `8083`.
-
-```json
-$ istioctl proxy-config routes test-app-a-test-eb94aee321-0.cf-workloads --name 8083 -o json
-
-[
-    {
-        "name": "8083",
-        "virtualHosts": [
-            {
-                "name": "log-cache.cf-system.svc.cluster.local:8083",
-                "domains": [
-                    "log-cache.cf-system.svc.cluster.local",
-                    "log-cache.cf-system.svc.cluster.local:8083",
-                    "log-cache.cf-system",
-                    "log-cache.cf-system:8083",
-                    "log-cache.cf-system.svc.cluster",
-                    "log-cache.cf-system.svc.cluster:8083",
-                    "log-cache.cf-system.svc",
-                    "log-cache.cf-system.svc:8083",
-                    "10.69.103.199",
-                    "10.69.103.199:8083"
-                ],
-                "routes": [
-                    {
-                        "name": "default",
-                        "match": {
-                            "prefix": "/"
-                        },
-                        "route": {
-                            "cluster": "outbound|8083||log-cache.cf-system.svc.cluster.local",
-```
-
-In the route config, the virtual host with name "8083" matches our domain "log-cache.cf-system:8083". In this virtual host, the route with name "default" matches our path "/test" and the "outbound|8083||log-cache.cf-system.svc.cluster.local" is selected.
-
-```json
-$ istioctl proxy-config cluster test-app-a-test-eb94aee321-0.cf-workloads --fqdn log-cache.cf-system.svc.cluster.local -o json
-
-(...)
-"dynamic_active_clusters": [
-    {
-      "cluster": {
-        (...)  
-        "edsClusterConfig": {
-              "edsConfig": {
-                  "ads": {}
-              },
-              "serviceName": "outbound|8083||log-cache.cf-system.svc.cluster.local"
-          },
-      (...)
-```
-
-The cluster "outbound|8083||log-cache.cf-system.svc.cluster.local" gets its endpoints from Pilot via Aggregated Discovery Service (ADS). These endpoints consist of a port and the targeted `pod IP` (in this case the pod IP of cf-system/log-cache-7bd48bbfc7-8ljxv).
-
-> **NOTE:** The list of endpoints is not dumped at `localhost:15000/config_dump`. Use istioctl or `curl -s http://localhost:15000/clusters?format=json` to get it.
-
-```bash
-$ istioctl proxy-config endpoints test-app-a-test-eb94aee321-0.cf-workloads --cluster "outbound|8083||log-cache.cf-system.svc.cluster.local"
-ENDPOINT             STATUS      OUTLIER CHECK     CLUSTER
-10.96.0.159:8083     HEALTHY     OK                outbound|8083||log-cache.cf-system.svc.cluster.local
-```
-
-The picture illustrates the described above config.
-![](doc/egress.png)
-
+As the app is available via ports 443 and 80, two route entries are added so that the Ingress Envoy knows how a host name is mapped to a service name. A new cluster entry is added to the Ingress Envoy config. No changes in the listener config.
 
 ## Istio implementation details of Sidecar Envoy
 
@@ -595,7 +488,7 @@ This section provides more technical details about the Sidecar Envoy and its com
 
 ### Sidecar Envoy
 
-After a new app has been pushed, the sidecar gets injected. The initContainer configures IPtables for the Sidecar Envoy in such a way that all incoming traffic is routed to port 15006 and all outbound traffic to 15001. The Sidecar Envoy is started with uid and gid 1337 and an IPtables rule is established that skips traffic capture for that user. This way an endless loop is prevented.
+After a new app has been pushed, the sidecar gets injected. The initContainer configures IPtables for the Sidecar Envoy in such a way that all incoming traffic is routed to port `15006` and all outbound traffic to `15001`. The Sidecar Envoy is started with uid and gid 1337 and an IPtables rule is established that skips traffic capture for that user. This way an endless loop is prevented.
 
 ```bash
 -A PREROUTING -p tcp -j ISTIO_INBOUND                             # Capture all inbound traffic to istio_inbound chain
@@ -613,7 +506,7 @@ After a new app has been pushed, the sidecar gets injected. The initContainer co
 -A ISTIO_REDIRECT -p tcp -j REDIRECT --to-ports 15001             # Envoy receives outgoing traffic on port 15001
 ```
 
-When a new Kubernetes service is added (i.e. cluster ip for CF app), no changes are made to Envoy config by default, but the started Sidecar Envoy gets pre-configured listeners as described below.
+When a new Kubernetes Service is added (i.e. cluster ip for CF app), no changes are made to Envoy config by default, but the started Sidecar Envoy gets pre-configured listeners as described below.
 
 See https://istio.io/docs/ops/deployment/requirements/#ports-used-by-istio for list of special Envoy ports.
 Use https://istio.io/latest/docs/ops/diagnostic-tools/proxy-cmd/ for actual debugging advice.
@@ -768,6 +661,113 @@ $ istioctl proxy-config cluster test-app-a-test-eb94aee321-0.cf-workloads --fqdn
       (...)
 ```
 This cluster has one static endpoint configured and that is localhost:8080, which is where our application is listening.
+
+### How egress is forwarded from the app container
+
+In contrast to bosh-deployed CF, there is no NAT gateway in cf-for-k8s. Instead, Kubernetes handles NAT. E.g., [Gardener](https://gardener.cloud/)-managed Kubernetes clusters have private NodeIPs and create NAT gateways to perform address translation. How these gateways are implemented depends on the respective infrastructure provider, e.g. the [`Cloud NAT Gateway`](https://cloud.google.com/nat/docs/overview) on GCP is purely software-defined. Since there is no Istio egress-gateway in cf-for-k8s as well, egress traffic from an app is routed through the sidecar and then to its destination outside the cluster using the infrastructure-specific NAT solution.
+
+The `istio-init` initContainer configures IP tables in such a way that all outgoing traffic is routed to port `15001`. There is a listener on this port that has `useOriginalDst` set to true which means it hands the request over to the listener that best matches the original destination of the request. If it can’t find any matching virtual listeners it sends the request to the `PassthroughCluster` which connects to the destination directly. For any address, where there is no special Istio config, e.g. for google.com:443, the `PassthroughCluster` is used.
+
+```json
+$ istioctl proxy-config listener test-app-a-test-eb94aee321-0.cf-workloads --port 15001 -o json
+
+[
+    {
+        "name": "virtualOutbound",
+        "address": {
+            "socketAddress": {
+                "address": "0.0.0.0",
+                "portValue": 15001
+            }
+        },
+        "useOriginalDst": true
+    }
+]
+```
+
+There is a virtual listener on 0.0.0.0 per each HTTP port for outbound HTTP traffic. We follow the packet sent to the log-cache-service via `curl log-cache.cf-system:8083/test`.
+
+```json
+istioctl proxy-config listener test-app-a-test-eb94aee321-0.cf-workloads --port 8083 -o json
+
+(...)
+"filters": [
+      {
+          "name": "envoy.http_connection_manager",
+          "typedConfig": {
+              "rds": {
+                  "configSource": {
+                      "ads": {}
+                  },
+                  "routeConfigName": "8083"
+              },
+(...)
+```
+The filter above belongs to the matching listener. `rds` means Route Discovery Service which looks for a route config with name `8083`.
+
+```json
+$ istioctl proxy-config routes test-app-a-test-eb94aee321-0.cf-workloads --name 8083 -o json
+
+[
+    {
+        "name": "8083",
+        "virtualHosts": [
+            {
+                "name": "log-cache.cf-system.svc.cluster.local:8083",
+                "domains": [
+                    "log-cache.cf-system.svc.cluster.local",
+                    "log-cache.cf-system.svc.cluster.local:8083",
+                    "log-cache.cf-system",
+                    "log-cache.cf-system:8083",
+                    "log-cache.cf-system.svc.cluster",
+                    "log-cache.cf-system.svc.cluster:8083",
+                    "log-cache.cf-system.svc",
+                    "log-cache.cf-system.svc:8083",
+                    "10.69.103.199",
+                    "10.69.103.199:8083"
+                ],
+                "routes": [
+                    {
+                        "name": "default",
+                        "match": {
+                            "prefix": "/"
+                        },
+                        "route": {
+                            "cluster": "outbound|8083||log-cache.cf-system.svc.cluster.local",
+```
+
+In the route config, the virtual host with name "8083" matches our domain "log-cache.cf-system:8083". In this virtual host, the route with name "default" matches our path "/test" and the "outbound|8083||log-cache.cf-system.svc.cluster.local" is selected.
+
+```json
+$ istioctl proxy-config cluster test-app-a-test-eb94aee321-0.cf-workloads --fqdn log-cache.cf-system.svc.cluster.local -o json
+
+(...)
+"dynamic_active_clusters": [
+    {
+      "cluster": {
+        (...)  
+        "edsClusterConfig": {
+              "edsConfig": {
+                  "ads": {}
+              },
+              "serviceName": "outbound|8083||log-cache.cf-system.svc.cluster.local"
+          },
+      (...)
+```
+
+The cluster "outbound|8083||log-cache.cf-system.svc.cluster.local" gets its endpoints from Pilot via Aggregated Discovery Service (ADS). These endpoints consist of a port and the targeted `pod IP` (in this case the pod IP of cf-system/log-cache-7bd48bbfc7-8ljxv).
+
+> **NOTE:** The list of endpoints is not dumped at `localhost:15000/config_dump`. Use istioctl or `curl -s http://localhost:15000/clusters?format=json` to get it.
+
+```bash
+$ istioctl proxy-config endpoints test-app-a-test-eb94aee321-0.cf-workloads --cluster "outbound|8083||log-cache.cf-system.svc.cluster.local"
+ENDPOINT             STATUS      OUTLIER CHECK     CLUSTER
+10.96.0.159:8083     HEALTHY     OK                outbound|8083||log-cache.cf-system.svc.cluster.local
+```
+
+The picture illustrates the described above config.
+![](doc/egress.png)
+
 
 ## Traffic restrictions
 
