@@ -10,11 +10,11 @@
     - [Push Single App](#push-single-app)
       - [Changes on Istio and cf-for-k8s components](#changes-on-istio-and-cf-for-k8s-components)
       - [Changes in Ingress Envoy config](#changes-in-ingress-envoy-config)
-    - [How egress is forwarded from the app container](#how-egress-is-forwarded-from-the-app-container)
     - [Push Another App](#push-another-app)
     - [Map Additional Route](#map-additional-route)
       - [Changes on Istio and cf-for-k8s components](#changes-on-istio-and-cf-for-k8s-components-1)
       - [Changes in Envoy config](#changes-in-envoy-config)
+    - [How egress is forwarded from the app container](#how-egress-is-forwarded-from-the-app-container)
   - [Istio implementation details of Sidecar Envoy](#istio-implementation-details-of-sidecar-envoy)
     - [Sidecar Envoy](#sidecar-envoy)
     - [How traffic is forwarded from sidecar to app container](#how-traffic-is-forwarded-from-sidecar-to-app-container)
@@ -76,7 +76,8 @@ This section describes what happens during common `cf push` and `map-route` use-
 For this purpose, a single app `test-app-a` is pushed, then another app `test-app-b`.
 Finally, an additional route is mapped to the existing app and the effects on CF, Istio and Envoy layers are documented.
 
-The picture illustrates what is happen during `cf push`
+The picture illustrates what is happen during `cf push`.
+
 ![](doc/configuration.png)
 
 | Entity                                                                                                                                                                                         | Description                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
@@ -95,6 +96,10 @@ The picture illustrates what is happen during `cf push`
 
 
 ### Push Single App
+
+Push a new `test-app-a`:
+
+```cf push test-app-a```
 
 #### Changes on Istio and cf-for-k8s components
 
@@ -123,7 +128,7 @@ spec:
   url: test-app-a.cf.c21s-1.c21s-dev.shoot.canary.k8s-hana.ondemand.com
 ```
 
-2. A new `VirtualService` gets created. The spec contains the public DNS name of the app, the service name to which traffic will be routed as well as HTTP headers to set.
+2. A new `VirtualService` gets created. The spec contains the public DNS name of the app, the service name to which traffic will be routed as well as HTTP headers to set(e.g. CF-specific header like `CF-App-Id`).
 
 ```yaml
   $ kubectl get virtualservices -n cf-workloads vs-e940065c708e484a1a3ce9bbde53f1316b5c1d078bbff9825ccf0e80e05e0073 -o yaml
@@ -151,9 +156,9 @@ spec:
 
 #### Changes in Ingress Envoy config
 
-The Istio documentation contains information on how-to retrieve the current configuration of the Sidecar and Ingress Envoys in a cluster using [istioctl](https://istio.io/latest/docs/ops/diagnostic-tools/istioctl/). Make sure that the istioctl version matches the Istio version. It is also possible to directly use envoy's admin endpoint on port 15000. For example, dump config via a GET on `/config_dump` or examine endpoints via a GET on `/clusters?format=json`
+The Istio documentation contains information on how-to retrieve the current configuration of the Sidecar and Ingress Envoys using [istioctl](https://istio.io/latest/docs/ops/diagnostic-tools/istioctl/). Make sure that the istioctl version matches the Istio version. It is also possible to directly use envoy's admin endpoint on port 15000. For example, dump config via a GET on `/config_dump` or examine endpoints via a GET on `/clusters?format=json`
 
-1. Envoy will pick up ingress spec from Istio to map a host name to a service name
+1. Envoy will pick up ingress spec from Istio to map a host name to a service name.
 2. A route entry is added so that the Ingress Envoy knows how a host name is mapped to a service name.
    Request headers are added that will be forwarded to the cf app. The route has a reference to the cluster.
 
@@ -222,7 +227,7 @@ $ istioctl proxy-config routes istio-ingressgateway-76jht.istio-system -o json
                 ]
               },
 ```
-3. A new cluster entry is added to the ingress envoy config (Don't confuse cluster with Kubernetes cluster - it's an Envoy backend).
+3. A new cluster entry is added to the Ingress Envoy config (Don't confuse cluster with Kubernetes cluster - it's an Envoy backend).
    The cluster entry contains info needed for the Ingress Envoy to open a TLS session with the app Sidecar Envoy. 
 
 ```json
@@ -295,14 +300,191 @@ $ istioctl proxy-config cluster istio-ingressgateway-76jht.istio-system --fqdn c
   "type": "EDS"
 }
 ```
-It has a reference to the k8s service `s-ef9c974d-adfd-4552-8fcd-19e17f84d8dc`. It is of type "EDS" which means that at runtime
-Envoy's EDS ([Endpoint Discovery Service](https://www.envoyproxy.io/docs/envoy/latest/intro/arch_overview/upstream/service_discovery#endpoint-discovery-service-eds)) returns the list of endpoints (IP:port and in future labels) associated with a real k8s service.
+    It has a reference to the k8s service `s-ef9c974d-adfd-4552-8fcd-19e17f84d8dc`. It is of type "EDS" which means that at runtime
+    Envoy's EDS ([Endpoint Discovery Service](https://www.envoyproxy.io/docs/envoy/latest/intro/arch_overview/upstream/service_discovery#endpoint-discovery-service-eds)) returns the list of endpoints (IP:port and in future labels) associated with a real Kubernetes service.
 
 4. As the listeners for port 80 and port 443 are existing, no changes for listeners.
 
+### Push Another App
+
+No changes to Envoy config of existing app(s). No direct app-to-app communication is possible as of now.
+
+
+### Map Additional Route
+Map a new route to the existing app test-node-app:
+
+```cf map-route test-node-app cf.cfi759.istio.shoot.canary.k8s-hana.ondemand.com --hostname my-app```
+
+#### Changes on Istio and cf-for-k8s components
+
+The CloudController creates a new `Route CR`. This is a representation of the cf route. It contains route_guid and a list of destinations: 
+
+```json
+$ kubectl get route -n cf-workloads 9fa832fa-4054-430f-9fc4-6d82733df836 -o json                 
+
+{
+    "apiVersion": "networking.cloudfoundry.org/v1alpha1",
+    "kind": "Route",
+    "metadata": {
+        "creationTimestamp": "2020-07-01T10:32:58Z",
+        "finalizers": [
+            "routes.networking.cloudfoundry.org"
+        ],
+        "generation": 3,
+        "labels": {
+            "app.kubernetes.io/component": "cf-networking",
+            "app.kubernetes.io/managed-by": "cloudfoundry",
+            "app.kubernetes.io/name": "9fa832fa-4054-430f-9fc4-6d82733df836",
+            "app.kubernetes.io/part-of": "cloudfoundry",
+            "app.kubernetes.io/version": "0.0.0",
+            "cloudfoundry.org/domain_guid": "48668620-1f88-45ca-a189-c96eda6972aa",
+            "cloudfoundry.org/org_guid": "feb7b668-e649-4d52-b973-ea758ae4cff1",
+            "cloudfoundry.org/route_guid": "9fa832fa-4054-430f-9fc4-6d82733df836",
+            "cloudfoundry.org/space_guid": "159b4307-970a-419e-a6ba-962838a7cb4a"
+        },
+        "name": "9fa832fa-4054-430f-9fc4-6d82733df836",
+        "namespace": "cf-workloads",
+        "resourceVersion": "125809",
+        "selfLink": "/apis/networking.cloudfoundry.org/v1alpha1/namespaces/cf-workloads/routes/9fa832fa-4054-430f-9fc4-6d82733df836",
+        "uid": "e56b639a-de86-4aba-b6df-af4550348447"
+    },
+    "spec": {
+        "destinations": [
+            {
+                "app": {
+                    "guid": "a96c7067-c0cd-474a-b83b-68b1980979c2",
+                    "process": {
+                        "type": "web"
+                    }
+                },
+                "guid": "746112e9-b9e5-43a8-b48f-457da74720c0",
+                "port": 8080,
+                "selector": {
+                    "matchLabels": {
+                        "cloudfoundry.org/app_guid": "a96c7067-c0cd-474a-b83b-68b1980979c2",
+                        "cloudfoundry.org/process_type": "web"
+                    }
+                }
+            }
+        ],
+        "domain": {
+            "internal": false,
+            "name": "cf.cfi759.istio.shoot.canary.k8s-hana.ondemand.com"
+        },
+        "host": "my-app",
+        "url": "my-app.cf.cfi759.istio.shoot.canary.k8s-hana.ondemand.com"
+    }
+}
+```
+The `Istio VirtualService` is created by `RouteController` that watches the `Route CR`.
+
+```json
+$ kubectl get virtualservices -n cf-workloads vs-1f238ea5cba255ced517ca9036deab2c7a5f662f9ecd9b14c88e2130a929bdc4 -o json
+
+{
+    "apiVersion": "networking.istio.io/v1alpha3",
+    "kind": "VirtualService",
+    "metadata": {
+        "annotations": {
+            "cloudfoundry.org/fqdn": "my-app.cf.cfi759.istio.shoot.canary.k8s-hana.ondemand.com"
+        },
+        (...)
+        "name": "vs-1f238ea5cba255ced517ca9036deab2c7a5f662f9ecd9b14c88e2130a929bdc4",
+        "namespace": "cf-workloads",
+        "ownerReferences": [
+            {
+                "apiVersion": "networking.cloudfoundry.org/v1alpha1",
+                "kind": "Route",
+                "name": "9fa832fa-4054-430f-9fc4-6d82733df836",
+                "uid": "e56b639a-de86-4aba-b6df-af4550348447"
+            }
+        ],
+        (...)
+    },
+    "spec": {
+        "gateways": [
+            "cf-system/istio-ingressgateway"
+        ],
+        "hosts": [
+            "my-app.cf.cfi759.istio.shoot.canary.k8s-hana.ondemand.com"
+        ],
+        "http": [
+            {
+                "route": [
+                    {
+                        "destination": {
+                            "host": "s-746112e9-b9e5-43a8-b48f-457da74720c0"
+                        },
+                        "headers": {
+                            "request": {
+                                "set": {
+                                    "CF-App-Id": "a96c7067-c0cd-474a-b83b-68b1980979c2",
+                                    "CF-App-Process-Type": "web",
+                                    "CF-Organization-Id": "feb7b668-e649-4d52-b973-ea758ae4cff1",
+                                    "CF-Space-Id": "159b4307-970a-419e-a6ba-962838a7cb4a"
+                                }
+                            }
+                        },
+                        "weight": 100
+                    }
+                ]
+            }
+        ]
+    }
+}
+```
+The owner of the `VirtualService` is the `Route` with the name and uid of the newly created `Route CR`.
+
+A new `Kubernetes Service` has been created by `RouteController` according to the destination spec of the `Route CR` (backend app). If the `Route CR` defines two destinations, then two `Services` will be created. 
+```json
+$ kubectl get services s-746112e9-b9e5-43a8-b48f-457da74720c0 -n cf-workloads -o json
+{
+    "apiVersion": "v1",
+    "kind": "Service",
+    "metadata": {
+        "annotations": {
+            "cloudfoundry.org/route-fqdn": "my-app.cf.cfi759.istio.shoot.canary.k8s-hana.ondemand.com"
+        },
+        "creationTimestamp": "2020-07-01T10:32:59Z",
+        "labels": {
+            "cloudfoundry.org/app_guid": "a96c7067-c0cd-474a-b83b-68b1980979c2",
+            "cloudfoundry.org/process_type": "web",
+            "cloudfoundry.org/route_guid": "9fa832fa-4054-430f-9fc4-6d82733df836"
+        },
+        "name": "s-746112e9-b9e5-43a8-b48f-457da74720c0",
+        "namespace": "cf-workloads",
+        "ownerReferences": [
+            {
+                "apiVersion": "networking.cloudfoundry.org/v1alpha1",
+                "kind": "Route",
+                "name": "9fa832fa-4054-430f-9fc4-6d82733df836",
+                "uid": "e56b639a-de86-4aba-b6df-af4550348447"
+            }
+        ],
+        (...)
+    },
+    "spec": {
+        (...)
+        "selector": {
+            "cloudfoundry.org/app_guid": "a96c7067-c0cd-474a-b83b-68b1980979c2",
+            "cloudfoundry.org/process_type": "web"
+        },
+        "sessionAffinity": "None",
+        "type": "ClusterIP"
+    },
+    "status": {
+        "loadBalancer": {}
+    }
+}
+```
+The owner of the service is the `Route` with the name and uid of the newly created `Route CR`.
+
+#### Changes in Envoy config
+As the app is available via ports 443 and 80, two route entries are added so that the ingress envoy knows how a host name is mapped to a service name.  A new cluster entry is added to the ingress envoy config. No changes in the listener config.
+
 ### How egress is forwarded from the app container
 
-In contrast to bosh-deployed CF, there is no NAT gateway in cf-for-k8s. Instead, k8s handles NAT. E.g., [Gardener](https://gardener.cloud/)-managed k8s clusters have private node IPs and create NAT gateways to perform address translation. How these gateways are implemented depends on the respective infrastructure provider, e.g. the [`Cloud NAT Gateway`](https://cloud.google.com/nat/docs/overview) on GCP is purely software-defined. Since there is no Istio egress-gateway in cf-for-k8s as well, egress traffic from an app is routed through the sidecar and then to its destination outside the cluster using the infrastructure-specific NAT solution.
+In contrast to bosh-deployed CF, there is no NAT gateway in cf-for-k8s. Instead, Kubernetes handles NAT. E.g., [Gardener](https://gardener.cloud/)-managed Kubernetes clusters have private NodeIPs and create NAT gateways to perform address translation. How these gateways are implemented depends on the respective infrastructure provider, e.g. the [`Cloud NAT Gateway`](https://cloud.google.com/nat/docs/overview) on GCP is purely software-defined. Since there is no Istio egress-gateway in cf-for-k8s as well, egress traffic from an app is routed through the sidecar and then to its destination outside the cluster using the infrastructure-specific NAT solution.
 
 The `istio-init` initContainer configures IP tables in such a way that all outgoing traffic is routed to port `15001`. There is a listener on this port that has `useOriginalDst` set to true which means it hands the request over to the listener that best matches the original destination of the request. If it can’t find any matching virtual listeners it sends the request to the `PassthroughCluster` which connects to the destination directly. For any address, where there is no special Istio config, e.g. for google.com:443, the `PassthroughCluster` is used.
 
@@ -406,183 +588,6 @@ ENDPOINT             STATUS      OUTLIER CHECK     CLUSTER
 The picture illustrates the described above config.
 ![](doc/egress.png)
 
-
-### Push Another App
-
-No changes to Envoy config of existing app(s). No direct app-to-app communication is possible as of now.
-
-
-### Map Additional Route
-Map a new route to the existing app test-node-app:
-
-```cf map-route test-node-app cf.cfi759.istio.shoot.canary.k8s-hana.ondemand.com --hostname my-app```
-
-#### Changes on Istio and cf-for-k8s components
-
-The CloudController creates a new `Route CR`. This is a representation of the cf route. It contains route_guid and a list of destinations: 
-
-```json
-$ kubectl get route -n cf-workloads 9fa832fa-4054-430f-9fc4-6d82733df836 -o json                 
-
-{
-    "apiVersion": "networking.cloudfoundry.org/v1alpha1",
-    "kind": "Route",
-    "metadata": {
-        "creationTimestamp": "2020-07-01T10:32:58Z",
-        "finalizers": [
-            "routes.networking.cloudfoundry.org"
-        ],
-        "generation": 3,
-        "labels": {
-            "app.kubernetes.io/component": "cf-networking",
-            "app.kubernetes.io/managed-by": "cloudfoundry",
-            "app.kubernetes.io/name": "9fa832fa-4054-430f-9fc4-6d82733df836",
-            "app.kubernetes.io/part-of": "cloudfoundry",
-            "app.kubernetes.io/version": "0.0.0",
-            "cloudfoundry.org/domain_guid": "48668620-1f88-45ca-a189-c96eda6972aa",
-            "cloudfoundry.org/org_guid": "feb7b668-e649-4d52-b973-ea758ae4cff1",
-            "cloudfoundry.org/route_guid": "9fa832fa-4054-430f-9fc4-6d82733df836",
-            "cloudfoundry.org/space_guid": "159b4307-970a-419e-a6ba-962838a7cb4a"
-        },
-        "name": "9fa832fa-4054-430f-9fc4-6d82733df836",
-        "namespace": "cf-workloads",
-        "resourceVersion": "125809",
-        "selfLink": "/apis/networking.cloudfoundry.org/v1alpha1/namespaces/cf-workloads/routes/9fa832fa-4054-430f-9fc4-6d82733df836",
-        "uid": "e56b639a-de86-4aba-b6df-af4550348447"
-    },
-    "spec": {
-        "destinations": [
-            {
-                "app": {
-                    "guid": "a96c7067-c0cd-474a-b83b-68b1980979c2",
-                    "process": {
-                        "type": "web"
-                    }
-                },
-                "guid": "746112e9-b9e5-43a8-b48f-457da74720c0",
-                "port": 8080,
-                "selector": {
-                    "matchLabels": {
-                        "cloudfoundry.org/app_guid": "a96c7067-c0cd-474a-b83b-68b1980979c2",
-                        "cloudfoundry.org/process_type": "web"
-                    }
-                }
-            }
-        ],
-        "domain": {
-            "internal": false,
-            "name": "cf.cfi759.istio.shoot.canary.k8s-hana.ondemand.com"
-        },
-        "host": "my-app",
-        "url": "my-app.cf.cfi759.istio.shoot.canary.k8s-hana.ondemand.com"
-    }
-}
-```
-The Istio `VirtualService` is created by `RouteController` that watches the `Route CR`.
-
-```json
-$ kubectl get virtualservices -n cf-workloads vs-1f238ea5cba255ced517ca9036deab2c7a5f662f9ecd9b14c88e2130a929bdc4 -o json
-
-{
-    "apiVersion": "networking.istio.io/v1alpha3",
-    "kind": "VirtualService",
-    "metadata": {
-        "annotations": {
-            "cloudfoundry.org/fqdn": "my-app.cf.cfi759.istio.shoot.canary.k8s-hana.ondemand.com"
-        },
-        (...)
-        "name": "vs-1f238ea5cba255ced517ca9036deab2c7a5f662f9ecd9b14c88e2130a929bdc4",
-        "namespace": "cf-workloads",
-        "ownerReferences": [
-            {
-                "apiVersion": "networking.cloudfoundry.org/v1alpha1",
-                "kind": "Route",
-                "name": "9fa832fa-4054-430f-9fc4-6d82733df836",
-                "uid": "e56b639a-de86-4aba-b6df-af4550348447"
-            }
-        ],
-        (...)
-    },
-    "spec": {
-        "gateways": [
-            "cf-system/istio-ingressgateway"
-        ],
-        "hosts": [
-            "my-app.cf.cfi759.istio.shoot.canary.k8s-hana.ondemand.com"
-        ],
-        "http": [
-            {
-                "route": [
-                    {
-                        "destination": {
-                            "host": "s-746112e9-b9e5-43a8-b48f-457da74720c0"
-                        },
-                        "headers": {
-                            "request": {
-                                "set": {
-                                    "CF-App-Id": "a96c7067-c0cd-474a-b83b-68b1980979c2",
-                                    "CF-App-Process-Type": "web",
-                                    "CF-Organization-Id": "feb7b668-e649-4d52-b973-ea758ae4cff1",
-                                    "CF-Space-Id": "159b4307-970a-419e-a6ba-962838a7cb4a"
-                                }
-                            }
-                        },
-                        "weight": 100
-                    }
-                ]
-            }
-        ]
-    }
-}
-```
-The owner of the virtual service is the `Route` with the name and uid of the newly created `Route CR`.
-
-A new Kubernetes `Service` has been created by `RouteController` according to the destination spec of the `Route CR` (backend app). If the `Route CR` defines two destinations, then two `Services` will be created. 
-```json
-$ kubectl get services s-746112e9-b9e5-43a8-b48f-457da74720c0 -n cf-workloads -o json
-{
-    "apiVersion": "v1",
-    "kind": "Service",
-    "metadata": {
-        "annotations": {
-            "cloudfoundry.org/route-fqdn": "my-app.cf.cfi759.istio.shoot.canary.k8s-hana.ondemand.com"
-        },
-        "creationTimestamp": "2020-07-01T10:32:59Z",
-        "labels": {
-            "cloudfoundry.org/app_guid": "a96c7067-c0cd-474a-b83b-68b1980979c2",
-            "cloudfoundry.org/process_type": "web",
-            "cloudfoundry.org/route_guid": "9fa832fa-4054-430f-9fc4-6d82733df836"
-        },
-        "name": "s-746112e9-b9e5-43a8-b48f-457da74720c0",
-        "namespace": "cf-workloads",
-        "ownerReferences": [
-            {
-                "apiVersion": "networking.cloudfoundry.org/v1alpha1",
-                "kind": "Route",
-                "name": "9fa832fa-4054-430f-9fc4-6d82733df836",
-                "uid": "e56b639a-de86-4aba-b6df-af4550348447"
-            }
-        ],
-        (...)
-    },
-    "spec": {
-        (...)
-        "selector": {
-            "cloudfoundry.org/app_guid": "a96c7067-c0cd-474a-b83b-68b1980979c2",
-            "cloudfoundry.org/process_type": "web"
-        },
-        "sessionAffinity": "None",
-        "type": "ClusterIP"
-    },
-    "status": {
-        "loadBalancer": {}
-    }
-}
-```
-The owner of the service is the `Route` with the name and uid of the newly created `Route CR`.
-
-#### Changes in Envoy config
-As the app is available via ports 443 and 80, two route entries are added so that the ingress envoy knows how a host name is mapped to a service name.  A new cluster entry is added to the ingress envoy config. No changes in the listener config.
 
 ## Istio implementation details of Sidecar Envoy
 
