@@ -40,7 +40,7 @@ This document shall be a living text that continuously evolves as cf-for-k8s dev
 
 
 ## Network Traffic
-The following diagram shows an overview of the network traffic at runtime. Ingress traffic is forwarded by the LoadBalancer to the IngressGateway Envoy which has discovered endpoint information about apps and services. The IngressGateway Envoy also holds certificates needed for (m)TLS connections to the client. Based on the L7 information of the (HTTP) request, the matching endpoint is selected and the request is forwarded to the sidecar Envoy of that endpoint. The sidecar eventually forwards the request to the app or service process on the local node.
+The following diagram shows an overview of the network traffic at runtime. Ingress traffic is forwarded by the LoadBalancer to the IngressGateway Envoy which has discovered endpoint information about apps and services. The IngressGateway Envoy also holds certificates needed for (m)TLS connections to the client. Based on the L7 information of the (HTTP) request, the matching endpoint is selected and the request is forwarded to the Sidecar Envoy of that endpoint. The sidecar eventually forwards the request to the app or service process on the local node.
 
 ![](doc/PhysicalNetwork.png)
 
@@ -50,34 +50,33 @@ The following diagram shows an overview of the network traffic at runtime. Ingre
 | [LoadBalancer](https://kubernetes.io/docs/tasks/access-application-cluster/create-external-load-balancer/)                                                                              | Exposes the Service externally using a cloud provider’s load balancer.|
 | IngressGateway Envoy| They act as a central ingress for clients outside the Istio service mesh. From now on it will be called in this document Ingress Envoy.|
 | App | This is the application, which is deployed by the developer and used by the client. The inbound traffic is routed through the Envoy, which is running in a sidecar.
-| Sidecar Envoy | Every instance(replica) of an app has a Sidecar Envoy (see more about the [Sidecar Pattern](https://www.magalix.com/blog/the-sidecar-pattern)), which runs in parallel with the app. These Envoy intercept any network traffic (ingress and egress) of the application and apply some filters depending on the Istio configuration (e.g. routing, retries, circuit-breaking).|
+| Sidecar Envoy | Every instance(replica) of an app has a Sidecar Envoy (see more about the [Sidecar Pattern](https://www.magalix.com/blog/the-sidecar-pattern)), which runs in parallel with the app. These Envoys intercept any network traffic (ingress and egress) of the application and apply some filters depending on the Istio configuration (e.g. routing, retries, circuit-breaking).|
 
 ## Envoy Terminology
 
-Istio’s traffic management model relies on the Envoy proxies that are deployed along with apps. This section provides a short overview about the terminology used by Envoy.
+Istio’s traffic management model relies on the Envoy Proxies that are deployed along with apps. This section provides a short overview about the terminology used by Envoy.
 
 ![](doc/envoy.png)
 
 | Entity                                                                                                                                                                                         | Description                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
 | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Downstream Host | A client connecting to Envoy in order to reach a backend app / service.|
+| Downstream Host | A client connecting to Envoy in order to reach a backend app/service.|
 | Listener |  Envoy module responsible for binding to an IP/port.|
 | Filter | Pluggable logic that allows traffic manipulation and routing decisions to upstream clusters.|
 | Route | Configuration to which cluster the traffic is forwarded.|
-| Cluster | Endpoints that requests are forwarded to by Envoy using load balancing. Don't confuse cluster with Kubernetes cluster.|
+| Cluster | Endpoints that requests are forwarded to by Envoy using load balancing. Don't confuse Envoy cluster with Kubernetes cluster.|
 | Upstream host | An endpoint.|
 
 See also [Envoy terminology](https://www.envoyproxy.io/docs/envoy/latest/intro/life_of_a_request#terminology)
 
 An example of simple [Envoy configuration](examples/simple-envoy.yaml)
 
-For more details see [request flow](https://www.envoyproxy.io/docs/envoy/latest/intro/life_of_a_request#request-flow)
-
 ## CloudFoundry, Istio and Envoy Config Diffs
 This section describes what happens during common `cf push` and `map-route` use-cases.
 For this purpose, a single app `test-app-a` is pushed, then another app `test-app-b`.
-Finally, an additional route is mapped to existing app and the effects on CF, Istio and Envoy layers are documented.
+Finally, an additional route is mapped to the existing app and the effects on CF, Istio and Envoy layers are documented.
 
+The picture illustrates what is happen during `cf push`
 ![](doc/configuration.png)
 
 | Entity                                                                                                                                                                                         | Description                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
